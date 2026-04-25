@@ -4,6 +4,7 @@ numpy
 pandas
 librosa
 matplotlib
+seaborn
 scikit-learn
 torch 
 torchvision 
