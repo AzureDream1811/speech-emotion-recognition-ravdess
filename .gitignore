@@ -146,10 +146,10 @@ venv.bak/
 *.wav
 *.mp4
 __pycache__/
-data/
 result/
 spectrograms/
 CSVs/
+dataset/
 
 # Spyder project settings
 .spyderproject
