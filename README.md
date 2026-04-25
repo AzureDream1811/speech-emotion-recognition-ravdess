@@ -1,4 +1,3 @@
-
 # Speech Emotion Recognition (RAVDESS)
 
 ## Models
@@ -15,6 +14,16 @@
 
 Audio → mel Spectrogram → Model → Emotion
 
+## Features Extraction
+
+| features        | Ý nghĩa                                                                                                   |
+| --------------- | --------------------------------------------------------------------------------------------------------- |
+| ZCR             | Đếm số lần sóng âm đổi chiều — giọng tức/sắc thì đổi nhiều, giọng buồn/nhẹ thì đổi ít                     |
+| Chroma STFT     | Đo độ mạnh yếu của 12 nốt nhạc trong giọng nói — giúp nhận ra cao độ và cảm xúc qua âm điệu               |
+| MFCC            | Mô phỏng cách tai người nghe âm thanh — nắm bắt "màu sắc" giọng nói, quan trọng nhất để nhận dạng cảm xúc |
+| RMSV            | Đo độ to/mạnh trung bình của giọng nói — giọng tức thì RMS cao, giọng buồn thì RMS thấp                   |
+| Mel Spectrogram | Hình ảnh hóa âm thanh theo thang tần số mà tai người cảm nhận được — dùng như "ảnh" để CNN học            |
+
 ## Kết quả
 
 | Model    | Accuracy |
@@ -29,11 +38,11 @@ Audio → mel Spectrogram → Model → Emotion
 
 Các audio có độ dài thời gian khác nhau dẫn đến mel spectrogram cũng có trục thời gian khác nhau:
 
-| Audio     | Shape       |
-| -----     | -----       |
-| Audio 3s  | (128, 94)   |
-| Audio 7s  | (128, 219)  |
-| Audio 10s | (128, 313)  |
+| Audio     | Shape      |
+| --------- | ---------- |
+| Audio 3s  | (128, 94)  |
+| Audio 7s  | (128, 219) |
+| Audio 10s | (128, 313) |
 
 Các model CNN yêu cầu input phải có shape cố định để có thể batch training. Giải pháp là **Padding + Truncation** — chọn `target_time` dựa trên percentile 90 của dataset, sau đó:
 

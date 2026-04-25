@@ -148,8 +148,8 @@ venv.bak/
 __pycache__/
 result/
 spectrograms/
-CSVs/
 dataset/
+features/
 
 # Spyder project settings
 .spyderproject
