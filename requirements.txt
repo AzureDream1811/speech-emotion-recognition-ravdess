@@ -13,3 +13,4 @@ kagglehub
 scikit-learn
 ipykernel
 IPython
+opencv-python
