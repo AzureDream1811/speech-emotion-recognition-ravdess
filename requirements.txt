@@ -1,3 +1,5 @@
+ipywidgets>=7.0.0
+tqdm
 numpy
 pandas
 librosa

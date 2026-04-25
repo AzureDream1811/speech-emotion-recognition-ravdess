@@ -148,6 +148,7 @@ venv.bak/
 __pycache__/
 data/
 result/
+spectrograms/
 
 # Spyder project settings
 .spyderproject
