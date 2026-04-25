@@ -149,6 +149,7 @@ __pycache__/
 data/
 result/
 spectrograms/
+CSVs/
 
 # Spyder project settings
 .spyderproject
