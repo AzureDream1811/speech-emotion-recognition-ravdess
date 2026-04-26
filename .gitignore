@@ -150,6 +150,8 @@ result/
 spectrograms/
 dataset/
 features/
+Ravdess_Silence/
+Ravdess_Augmented/
 
 # Spyder project settings
 .spyderproject

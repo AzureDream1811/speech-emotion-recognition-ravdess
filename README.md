@@ -34,6 +34,8 @@ Audio → mel Spectrogram → Model → Emotion
 
 ## Vấn đề khi tiền xử lý dữ liệu
 
+### 1. Lam
+
 ### 1. Time Duration khác nhau
 
 Các audio có độ dài thời gian khác nhau dẫn đến mel spectrogram cũng có trục thời gian khác nhau:
