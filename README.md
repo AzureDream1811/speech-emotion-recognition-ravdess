@@ -1,91 +1,146 @@
-# Speech Emotion Recognition (RAVDESS)
+# Nhận Dạng Cảm Xúc Qua Giọng Nói
 
-## Models
+Dự án này xây dựng một quy trình học sâu (deep learning) để nhận dạng cảm xúc của con người từ giọng nói. Hệ thống xử lý các file âm thanh thô, chuyển đổi chúng thành dạng biểu diễn hình ảnh (Mel Spectrogram), và sau đó sử dụng một Mạng Nơ-ron Tích chập (CNN) để phân loại cảm xúc.
 
-- ResNet18
-- DenseNet
-- VGG16
+## 🚀 Tính Năng
 
-## Dataset
+- **Quy Trình Toàn Diện**: Từ âm thanh thô đến phân loại cảm xúc.
+- **Tiền Xử Lý Dữ Liệu**: Bao gồm loại bỏ khoảng lặng và tăng cường dữ liệu (thêm nhiễu, thay đổi cao độ, co giãn thời gian) để tạo ra một bộ dữ liệu mạnh mẽ.
+- **Trích Xuất Đặc Trưng**: Chuyển đổi tín hiệu âm thanh thành hình ảnh Mel Spectrogram, phù hợp cho các mô hình CNN.
+- **Mô Hình Học Sâu**: Sử dụng mô hình ResNet đã được huấn luyện trước (pre-trained) và tinh chỉnh (fine-tuning) để đạt độ chính xác cao.
+- **Kỹ Thuật Huấn Luyện Nâng Cao**: Áp dụng scheduler `OneCycleLR`, trình tối ưu hóa `AdamW`, và Test Time Augmentation (TTA) để cải thiện hiệu suất.
+- **Quy Trình Có Cấu Trúc**: Toàn bộ quy trình được tổ chức thành một chuỗi các file Jupyter Notebook.
 
-- RAVDESS
+## 📂 Cấu Trúc Dự Án
 
-## Pipeline
-
-Audio → mel Spectrogram → Model → Emotion
-
-## Features Extraction
-
-| features        | Ý nghĩa                                                                                                   |
-| --------------- | --------------------------------------------------------------------------------------------------------- |
-| ZCR             | Đếm số lần sóng âm đổi chiều — giọng tức/sắc thì đổi nhiều, giọng buồn/nhẹ thì đổi ít                     |
-| Chroma STFT     | Đo độ mạnh yếu của 12 nốt nhạc trong giọng nói — giúp nhận ra cao độ và cảm xúc qua âm điệu               |
-| MFCC            | Mô phỏng cách tai người nghe âm thanh — nắm bắt "màu sắc" giọng nói, quan trọng nhất để nhận dạng cảm xúc |
-| RMSV            | Đo độ to/mạnh trung bình của giọng nói — giọng tức thì RMS cao, giọng buồn thì RMS thấp                   |
-| Mel Spectrogram | Hình ảnh hóa âm thanh theo thang tần số mà tai người cảm nhận được — dùng như "ảnh" để CNN học            |
-
-## Kết quả
-
-| Model    | Accuracy |
-| -------- | -------- |
-| Resnet   | ...      |
-| DenseNet | ...      |
-| VGG16    | ...      |
-
-## Vấn đề khi tiền xử lý dữ liệu
-
-### 1. Lam
-
-### 1. Time Duration khác nhau
-
-Các audio có độ dài thời gian khác nhau dẫn đến mel spectrogram cũng có trục thời gian khác nhau:
-
-| Audio     | Shape      |
-| --------- | ---------- |
-| Audio 3s  | (128, 94)  |
-| Audio 7s  | (128, 219) |
-| Audio 10s | (128, 313) |
-
-Các model CNN yêu cầu input phải có shape cố định để có thể batch training. Giải pháp là **Padding + Truncation** — chọn `target_time` dựa trên percentile 90 của dataset, sau đó:
-
-- Nếu `time >= target_time` → cắt ở giữa để giữ phần trọng tâm
-- Nếu `time < target_time` → pad zeros 2 bên cho cân đối
-
-```python
-def pad_or_truncate(mel, target_time=128):
-    time = mel.shape[1]
-    if time >= target_time:
-        start = (time - target_time) // 2
-        return mel[:, start:start + target_time]
-    else:
-        pad_left = (target_time - time) // 2
-        pad_right = target_time - time - pad_left
-        return np.pad(mel, ((0, 0), (pad_left, pad_right)))
+```
+.
+├── 1_Preparedataset.ipynb      # Notebook để làm sạch, tăng cường và chia dữ liệu.
+├── 2_FeatureExtraction.ipynb   # Notebook để chuyển đổi âm thanh thành Mel Spectrogram.
+├── 3_CNN-classification.ipynb  # Notebook để huấn luyện và đánh giá mô hình CNN.
+├── requirements.txt            # Các gói Python cần thiết.
+├── dataset/                    # Thư mục chứa các bộ dữ liệu âm thanh thô (RAVDESS, CREMA-D).
+├── CSVs/                       # Lưu các file CSV chứa đường dẫn file và nhãn.
+├── features/                   # Lưu các đặc trưng đã trích xuất (ảnh Mel Spectrogram).
+└── ...
 ```
 
-### 2. Normalize mel spectrogram
+## ⚙️ Cài Đặt
 
-Mel spectrogram sau khi convert sang dB có giá trị nằm trong khoảng âm (thường từ -80 đến 0 dB). Nếu không normalize, model sẽ khó hội tụ vì:
+Thực hiện theo các bước sau để thiết lập môi trường cho dự án.
 
-- Các giá trị quá lớn về magnitude làm gradient không ổn định
-- Phân phối giá trị khác nhau giữa các file audio
+### 1. Clone Repository
 
-Giải pháp dùng **Z-score normalization** (mean=0, std=1):
-S_dB = (S_dB - np.mean(S_dB)) / (np.std(S_dB) + 1e-6)
-
-```python
-> Thêm `1e-6` vào mẫu số để tránh chia cho 0 khi std = 0.
+```bash
+git clone https://github.com/AzureDream1811/speech-emotion-recognition-ravdess.git
+cd speech-emotion-recognition-ravdess
 ```
 
-### 3. Số channel không tương thích
+### 2. Tạo Môi Trường Ảo
 
-Các model CNN (ResNet18, DenseNet, VGG16) mặc định nhận input **3 channel (RGB)**, trong khi mel spectrogram là ảnh **1 channel (grayscale)**. cách xử lý:
+Rất khuyến khích sử dụng môi trường ảo để quản lý các gói phụ thuộc.
 
-**Sửa lớp conv1 của model nhận 1 channel**:
+```bash
+# Tạo môi trường ảo
+python -m venv .venv
 
-```python
-model.conv1 = nn.Conv2d(
-    in_channels=1, out_channels=64,
-    kernel_size=7, stride=2, padding=3, bias=False
-)
+# Kích hoạt môi trường
+# Trên Windows
+.venv\Scripts\activate
+# Trên macOS/Linux
+source .venv/bin/activate
 ```
+
+### 3. Cài Đặt Các Gói Phụ Thuộc
+
+Cài đặt tất cả các gói cần thiết từ file `requirements.txt`.
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Cài Đặt FFmpeg (Để Loại Bỏ Khoảng Lặng)
+
+Bước loại bỏ khoảng lặng trong `1_Preparedataset.ipynb` yêu cầu FFmpeg.
+
+- **Windows**: Tải file thực thi của FFmpeg, sau đó thêm đường dẫn đến thư mục `bin` vào biến môi trường PATH của hệ thống.
+- **macOS**: `brew install ffmpeg`
+- **Linux**: `sudo apt-get install ffmpeg`
+
+### 5. Tải Dữ Liệu
+
+Dự án này sử dụng bộ dữ liệu **CREMA-D** và **RAVDESS**.
+
+1.  Tải các bộ dữ liệu từ nguồn chính thức của chúng.
+2.  Tạo một thư mục có tên `dataset` trong thư mục gốc của dự án.
+3.  Đặt các file âm thanh theo cấu trúc sau:
+    ```
+    dataset/
+    ├── CREMA-D/
+    │   └── AudioWAV/
+    │       ├── 1001_DFA_ANG_XX.wav
+    │       └── ...
+    └── ravdess/
+        ├── Actor_01/
+        │   ├── 03-01-01-01-01-01-01.wav
+        │   └── ...
+        └── Actor_02/
+            └── ...
+    ```
+
+## 📈 Quy Trình - Hướng Dẫn Chạy
+
+Dự án được chia thành ba notebook chính. Hãy chạy chúng theo thứ tự sau.
+
+### Bước 1: Chuẩn Bị Dữ Liệu
+
+**Notebook:** [1_Preparedataset.ipynb](1_Preparedataset.ipynb)
+
+Notebook này xử lý tất cả các bước chuẩn bị dữ liệu ban đầu cho bộ dữ liệu CREMA-D.
+
+- **Tải đường dẫn âm thanh** và trích xuất nhãn (cảm xúc, người nói).
+- **Chia dữ liệu** thành các tập huấn luyện và kiểm thử, đảm bảo rằng người nói trong tập huấn luyện không xuất hiện trong tập kiểm thử (sử dụng `GroupShuffleSplit`).
+- **Loại bỏ khoảng lặng** ở đầu và cuối của các file âm thanh.
+- **Thực hiện tăng cường dữ liệu** trên tập huấn luyện bằng cách thêm nhiễu, co giãn thời gian, hoặc thay đổi cao độ.
+- **Lưu danh sách file cuối cùng** vào các file CSV trong thư mục `CSVs/`.
+
+> **Chạy tất cả các ô (cell) trong notebook này từ trên xuống dưới.**
+
+### Bước 2: Trích Xuất Đặc Trưng (Mel Spectrograms)
+
+**Notebook:** [2_FeatureExtraction.ipynb](2_FeatureExtraction.ipynb)
+
+Notebook này chuyển đổi các file âm thanh đã được tiền xử lý thành hình ảnh Mel Spectrogram, đây sẽ là đầu vào cho mô hình CNN của chúng ta.
+
+- **Tải các file CSV** được tạo ở bước trước.
+- **Lặp qua từng file âm thanh**, chuẩn hóa độ dài của nó về một khoảng thời gian tiêu chuẩn (3 giây).
+- **Tạo một Mel Spectrogram** cho mỗi file âm thanh.
+- **Lưu các spectrogram dưới dạng ảnh PNG** vào các thư mục `features/images/train` và `features/images/test`.
+- **Tạo các file CSV mới** (`train_images.csv`, `test_images.csv`) để ánh xạ các ảnh này với cảm xúc và người nói tương ứng.
+
+> **Chạy tất cả các ô trong notebook này từ trên xuống dưới.**
+
+### Bước 3: Huấn Luyện Mô Hình CNN
+
+**Notebook:** [3_CNN-classification.ipynb](3_CNN-classification.ipynb)
+
+Đây là bước cuối cùng, nơi chúng ta huấn luyện và đánh giá mô hình nhận dạng cảm xúc.
+
+- **Định nghĩa các phép biến đổi** và tăng cường dữ liệu cho ảnh spectrogram.
+- **Tạo các đối tượng `Dataset` và `DataLoader`** cho việc huấn luyện, xác thực và kiểm thử.
+- **Xây dựng mô hình ResNet** sử dụng học chuyển giao (transfer learning), tinh chỉnh nó cho tác vụ cụ thể của chúng ta.
+- **Huấn luyện mô hình** bằng tập huấn luyện và đánh giá nó trên tập xác thực sau mỗi epoch.
+- **Áp dụng Early Stopping** để ngăn chặn overfitting và lưu lại mô hình tốt nhất dựa trên điểm F1-score.
+- **Đánh giá mô hình cuối cùng** trên tập kiểm thử chưa từng thấy bằng cách sử dụng **Test Time Augmentation (TTA)** để tăng cường độ chính xác.
+
+> **Chạy tất cả các ô trong notebook này để huấn luyện mô hình và xem các chỉ số hiệu suất cuối cùng.**
+
+## 📊 Kết Quả
+
+Hiệu suất của mô hình được đánh giá bằng các chỉ số Accuracy, F1-Score, Precision và Recall. Kết quả cuối cùng trên tập kiểm thử được in ra ở cuối notebook `3_CNN-classification.ipynb`.
+
+*(Bạn có thể thêm bảng kết quả cuối cùng của mình vào đây sau khi chạy toàn bộ quy trình)*
+
+| Model    | Accuracy | F1-Score |
+| -------- | -------- | -------- |
+| ResNet34 | ...      | ...      |
