@@ -151,8 +151,8 @@ spectrograms/
 dataset/
 features/
 CSVs/
-*_Augmented/
-*_Silence/
+*_augmented/
+*_silenced/
 
 # Spyder project settings
 .spyderproject
