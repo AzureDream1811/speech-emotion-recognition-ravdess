@@ -153,6 +153,7 @@ features/
 CSVs/
 *_augmented/
 *_silenced/
+best_model.pth
 
 # Spyder project settings
 .spyderproject
