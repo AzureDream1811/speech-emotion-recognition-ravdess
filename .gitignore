@@ -154,6 +154,8 @@ CSVs/
 *_augmented/
 *_silenced/
 best_model.pth
+build_ResNet.pth
+build_DenseNet.pth
 
 # Spyder project settings
 .spyderproject
