@@ -1,131 +1,134 @@
+# Báo cáo Dự án: Nhận dạng Cảm xúc qua Giọng nói (Speech Emotion Recognition)
 
-# Báo cáo: Nhận dạng cảm xúc trong giọng nói sử dụng tập dữ liệu CREMA-D
+## 1. Giới thiệu
 
-## Giới thiệu
+### 1.1. Mục tiêu
 
-Tài liệu này trình bày chi tiết quy trình xây dựng một mô hình học sâu để nhận dạng cảm xúc trong giọng nói. Quy trình bao gồm các bước từ tiền xử lý dữ liệu âm thanh, trích xuất đặc trưng, đến huấn luyện và đánh giá mô hình. Tập dữ liệu được sử dụng là CREMA-D, một bộ dữ liệu phổ biến cho các tác vụ nhận dạng cảm xúc. Mô hình được xây dựng dựa trên kiến trúc ResNet-50 thông qua kỹ thuật học chuyển giao (transfer learning).
+Dự án này nhằm xây dựng một hệ thống có khả năng nhận dạng cảm xúc của con người thông qua tín hiệu giọng nói. Hệ thống sẽ phân loại các đoạn âm thanh thành các lớp cảm xúc cơ bản như: Giận dữ (Anger), Ghê tởm (Disgust), Sợ hãi (Fear), Vui vẻ (Happy), Trung tính (Neutral), và Buồn (Sad).
 
-## 1. Chuẩn bị môi trường và Nhập thư viện
+### 1.2. Tập dữ liệu
 
-Bước đầu tiên là thiết lập môi trường làm việc và nhập các thư viện Python cần thiết.
+Dự án sử dụng tập dữ liệu **CREMA-D (Crowd-sourced Emotional Multimodal Actors Dataset)**. Đây là một bộ dữ liệu đa phương thức chứa các bản ghi âm và video của các diễn viên thể hiện cảm xúc. Trong dự án này, chúng ta chỉ tập trung vào phần âm thanh (AudioWAV).
 
-- **`os`**: Tương tác với hệ điều hành, dùng để quản lý đường dẫn và tệp tin.
-- **`pandas`**: Đọc, ghi và xử lý dữ liệu dạng bảng (DataFrame).
-- **`numpy`**: Thực hiện các phép toán số học hiệu suất cao, đặc biệt là với mảng đa chiều.
-- **`seaborn` và `matplotlib.pyplot`**: Trực quan hóa dữ liệu, vẽ biểu đồ và đồ thị.
-- **`librosa`**: Một thư viện mạnh mẽ chuyên dụng cho phân tích và xử lý âm thanh.
-- **`soundfile` (`sf`)**: Đọc và ghi các tệp âm thanh.
-- **`pydub`**: Thư viện cấp cao để xử lý âm thanh, dùng để loại bỏ khoảng lặng.
-- **`torch` và `torchvision`**: Nền tảng học sâu của PyTorch, cung cấp các công cụ để xây dựng, huấn luyện và triển khai mô hình mạng nơ-ron.
-- **`sklearn.model_selection`**: Cung cấp công cụ để chia tập dữ liệu.
-- **`tqdm`**: Tạo thanh tiến trình (progress bar) để theo dõi các vòng lặp.
-- **Các thư viện khác**: `PIL` (xử lý ảnh), `cv2` (OpenCV), `warnings`, `copy` cho các tác vụ phụ trợ.
+### 1.3. Hướng tiếp cận
+
+Hướng tiếp cận chính của dự án là chuyển đổi bài toán từ phân loại chuỗi thời gian (tín hiệu âm thanh) sang bài toán phân loại hình ảnh. Quy trình tổng thể như sau:
+
+1.  **Tiền xử lý âm thanh**: Tín hiệu âm thanh thô được xử lý để loại bỏ nhiễu và các phần không chứa thông tin.
+2.  **Trích xuất đặc trưng**: Mỗi tệp âm thanh được chuyển đổi thành một ảnh **Mel Spectrogram**. Mel Spectrogram là một biểu đồ biểu diễn phổ năng lượng của tín hiệu âm thanh theo thang Mel, mô phỏng gần hơn với cách tai người cảm nhận âm thanh.
+3.  **Huấn luyện mô hình**: Sử dụng các kiến trúc mạng nơ-ron tích chập (Convolutional Neural Network - CNN) đã được huấn luyện trước (pre-trained) trên tập dữ liệu ImageNet để huấn luyện mô hình phân loại các ảnh Mel Spectrogram.
+4.  **Đánh giá**: Đánh giá hiệu suất của mô hình trên tập dữ liệu thử nghiệm.
+
+Lý do chọn hướng tiếp cận này là vì các mô hình CNN pre-trained (như ResNet, DenseNet, VGG, EfficientNet) đã học được các đặc trưng hình ảnh rất mạnh mẽ từ tập ImageNet. Bằng cách chuyển âm thanh thành ảnh, chúng ta có thể tận dụng sức mạnh của học chuyển giao (Transfer Learning), giúp mô hình học nhanh hơn, hiệu quả hơn và yêu cầu ít dữ liệu hơn so với việc xây dựng một mô hình từ đầu.
 
 ## 2. Tiền xử lý dữ liệu
 
-Đây là giai đoạn quan trọng nhất, quyết định phần lớn đến hiệu suất của mô hình. Dữ liệu âm thanh thô được xử lý qua nhiều bước để trở nên phù hợp cho việc huấn luyện.
+### 2.1. Tải và Khám phá Dữ liệu
 
-### 2.1. Tải và khám phá tập dữ liệu CREMA-D
+-   **Tải dữ liệu**: Các tệp âm thanh từ thư mục `dataset/CREMA-D/AudioWAV/` được quét và thông tin về `speaker` (người nói), `path` (đường dẫn tệp), và `emotion` (cảm xúc) được trích xuất từ tên tệp.
+-   **Phân tích**: Dữ liệu được lưu vào một `DataFrame` của Pandas. Biểu đồ phân phối cảm xúc cho thấy dữ liệu tương đối cân bằng giữa các lớp, đây là một điều kiện thuận lợi cho việc huấn luyện mô hình.
 
-- **Tải dữ liệu**: Quét qua thư mục chứa tập dữ liệu CREMA-D (`dataset/CREMA-D/AudioWAV/`). Tên mỗi tệp âm thanh chứa thông tin về người nói, câu nói và cảm xúc.
-- **Trích xuất thông tin**: Từ tên tệp, các thông tin như `speaker` (người nói) và `emotion` (cảm xúc) được trích xuất. Các mã cảm xúc (ví dụ: "ANG" cho "Anger") được ánh xạ sang tên cảm xúc đầy đủ.
-- **Tạo DataFrame**: Toàn bộ thông tin được lưu vào một DataFrame của `pandas` để dễ dàng quản lý và truy xuất. DataFrame này bao gồm các cột: `speaker`, `path` (đường dẫn đến tệp âm thanh), và `emotion`.
-- **Phân tích phân phối**: Sử dụng `seaborn.countplot` để vẽ biểu đồ phân phối số lượng mẫu cho mỗi loại cảm xúc. Điều này giúp kiểm tra xem tập dữ liệu có bị mất cân bằng hay không.
+### 2.2. Loại bỏ Khoảng lặng (Silence Removal)
 
-### 2.2. Loại bỏ khoảng lặng
+-   **Vấn đề**: Các tệp âm thanh thường chứa các khoảng lặng ở đầu và cuối. Những khoảng lặng này không mang thông tin về cảm xúc và có thể được xem là nhiễu, làm giảm hiệu suất của mô hình.
+-   **Giải pháp**: Sử dụng thư viện `pydub` để phát hiện và cắt bỏ các khoảng lặng này. Một ngưỡng âm lượng (`-50.0 dBFS`) được sử dụng để xác định đâu là khoảng lặng.
+-   **Kết quả**: Các tệp âm thanh đã được xử lý được lưu vào thư mục `dataset_silenced/`, và một tệp CSV mới (`CSVs/dataset_silenced.csv`) được tạo ra để theo dõi.
 
-Các khoảng lặng ở đầu và cuối mỗi đoạn ghi âm không chứa thông tin hữu ích về cảm xúc và có thể gây nhiễu cho mô hình.
+### 2.3. Phân chia Tập dữ liệu (Train/Validation/Test Split)
 
-- **Sử dụng `pydub`**: Thư viện `pydub` được dùng để phát hiện và cắt bỏ các khoảng lặng.
-- **Cơ chế hoạt động**: Một hàm `detect_leading_silence` được định nghĩa để quét qua đoạn âm thanh theo từng đoạn nhỏ (chunk). Nếu mức âm lượng (dBFS) của một chunk thấp hơn một ngưỡng (`-50.0 dBFS`), nó được coi là khoảng lặng. Quá trình này được thực hiện từ cả đầu và cuối của file âm thanh.
-- **Lưu kết quả**: Các tệp âm thanh sau khi đã được cắt bỏ khoảng lặng được lưu vào một thư mục mới (`dataset_silenced/`). Một DataFrame mới (`dataset_silenced`) được tạo để theo dõi các tệp đã xử lý này.
+-   **Sự cần thiết**: Để huấn luyện và đánh giá mô hình một cách khách quan, dữ liệu cần được chia thành 3 tập riêng biệt:
+    -   **Tập huấn luyện (Train set)**: Dùng để huấn luyện mô hình.
+    -   **Tập kiểm định (Validation set)**: Dùng để tinh chỉnh các siêu tham số (hyperparameters) và theo dõi quá trình huấn luyện, tránh tình trạng học vẹt (overfitting).
+    -   **Tập thử nghiệm (Test set)**: Dùng để đánh giá hiệu suất cuối cùng của mô hình trên dữ liệu mà nó chưa từng thấy.
+-   **Phương pháp**: `GroupShuffleSplit` từ `scikit-learn` được sử dụng.
+-   **Lý do chọn `GroupShuffleSplit`**: Trong tập dữ liệu này, mỗi người nói có nhiều bản ghi âm. Nếu chỉ chia ngẫu nhiên, các bản ghi của cùng một người nói có thể xuất hiện trong cả ba tập dữ liệu. Điều này có thể khiến mô hình "nhớ" giọng của người nói thay vì học các đặc trưng cảm xúc thực sự. `GroupShuffleSplit` đảm bảo rằng tất cả các bản ghi của một người nói chỉ thuộc về một tập duy nhất (train, val, hoặc test). Điều này giúp mô hình có khả năng tổng quát hóa tốt hơn với giọng nói của những người mới.
+-   **Tỷ lệ phân chia**: 80% cho tập huấn luyện, 10% cho tập kiểm định, và 10% cho tập thử nghiệm.
 
-### 2.3. Phân chia tập dữ liệu
+### 2.4. Tăng cường Dữ liệu (Data Augmentation)
 
-Để đánh giá mô hình một cách khách quan, tập dữ liệu được chia thành ba phần: huấn luyện (train), kiểm định (validation), và kiểm thử (test).
+-   **Vấn đề**: Để mô hình có khả năng chống nhiễu và tổng quát hóa tốt hơn, chúng ta cần làm cho dữ liệu huấn luyện đa dạng hơn.
+-   **Giải pháp**: Áp dụng các kỹ thuật tăng cường dữ liệu âm thanh một cách ngẫu nhiên cho tập huấn luyện:
+    -   **Thêm nhiễu (Noise)**: Thêm nhiễu ngẫu nhiên vào tín hiệu.
+    -   **Kéo dài/Co giãn thời gian (Time Stretch)**: Thay đổi tốc độ của âm thanh mà không làm thay đổi cao độ.
+    -   **Thay đổi cao độ (Pitch Shift)**: Thay đổi cao độ của âm thanh mà không làm thay đổi tốc độ.
+-   **Thực hiện**: Mỗi tệp âm thanh trong tập huấn luyện được giữ lại bản gốc và tạo thêm một phiên bản tăng cường. Dữ liệu tăng cường được lưu vào `dataset_augmented/`.
 
-- **`GroupShuffleSplit`**: Công cụ này từ `scikit-learn` được sử dụng để đảm bảo rằng tất cả các mẫu âm thanh từ cùng một người nói (`speaker`) chỉ thuộc về một trong ba tập (train, val, hoặc test). Điều này ngăn chặn "rò rỉ dữ liệu", giúp mô hình tổng quát hóa tốt hơn trên những người nói mà nó chưa từng gặp.
-- **Tỷ lệ phân chia**:
-    1.  80% dữ liệu được dùng cho tập huấn luyện (`train_df`).
-    2.  20% còn lại được chia đều thành 10% cho tập kiểm định (`val_df`) và 10% cho tập kiểm thử (`test_df`).
-- **Lưu trữ**: Các DataFrame tương ứng với mỗi tập được lưu thành các tệp CSV riêng biệt (`train.csv`, `val.csv`, `test.csv`).
+## 3. Chuyển đổi sang Mel Spectrogram
 
-### 2.4. Tăng cường dữ liệu (Data Augmentation)
+Đây là bước cốt lõi của phương pháp tiếp cận.
 
-Tăng cường dữ liệu là một kỹ thuật quan trọng để tăng kích thước và sự đa dạng của tập huấn luyện, giúp mô hình chống lại hiện tượng học vẹt (overfitting). Chỉ tập huấn luyện được tăng cường.
+-   **Mel Spectrogram là gì?**: Nó là một biểu đồ 2D biểu diễn sự thay đổi của phổ năng lượng tín hiệu âm thanh theo thời gian. Trục hoành là thời gian, trục tung là tần số (theo thang Mel), và màu sắc biểu thị cường độ (biên độ) tại mỗi điểm thời gian-tần số.
+-   **Tại sao lại dùng Mel Spectrogram?**:
+    -   Nó mô phỏng cách tai người cảm nhận tần số, tập trung nhiều hơn vào các tần số thấp, nơi chứa nhiều thông tin quan trọng của giọng nói.
+    -   Nó biến đổi tín hiệu 1D (âm thanh) thành biểu diễn 2D (ảnh), cho phép chúng ta áp dụng các mô hình CNN mạnh mẽ.
+-   **Quá trình thực hiện**:
+    1.  Sử dụng thư viện `librosa` để tải tệp âm thanh.
+    2.  Tính toán Mel Spectrogram từ tín hiệu âm thanh. Các tham số quan trọng (`N_MELS`, `N_FFT`, `HOP_LENGTH`) quyết định độ phân giải về tần số và thời gian của ảnh.
+    3.  Chuyển đổi biên độ sang thang decibel (dB) để nén dải động và làm nổi bật các đặc trưng.
+    4.  Vẽ spectrogram và lưu dưới dạng tệp ảnh PNG (`.png`) không có trục và viền.
+-   **Lưu trữ**: Các ảnh được tạo ra được lưu vào `features/images/`. Dữ liệu ảnh (dưới dạng mảng NumPy) và nhãn tương ứng được lưu vào các tệp `.npy` (`features/*.npy`) để tăng tốc độ tải dữ liệu trong các lần chạy sau.
 
-- **Các kỹ thuật được áp dụng**:
-    - **Thêm nhiễu (Noise)**: Thêm nhiễu ngẫu nhiên vào tín hiệu âm thanh.
-    - **Giãn/Nén thời gian (Stretch)**: Thay đổi tốc độ của âm thanh một cách ngẫu nhiên.
-    - **Thay đổi cao độ (Pitch)**: Dịch chuyển cao độ của âm thanh lên hoặc xuống.
-- **Quy trình**: Với mỗi mẫu trong tập huấn luyện, một bản sao gốc được giữ lại. Sau đó, một trong ba kỹ thuật tăng cường trên được chọn ngẫu nhiên và áp dụng để tạo ra một mẫu mới.
-- **Kết quả**: Tập huấn luyện được mở rộng, với mỗi mẫu gốc có thêm một phiên bản tăng cường. Dữ liệu mới được lưu vào thư mục `dataset_augmented/` và được quản lý bởi `dataset_augmented.csv`.
+## 4. Tải dữ liệu và Tạo Data Loader
 
-## 3. Trích xuất đặc trưng: Mel Spectrogram
+-   **Tải dữ liệu ảnh**: Các tệp `.npy` chứa mảng ảnh và nhãn được tải vào bộ nhớ.
+-   **One-Hot Encoding**: Nhãn cảm xúc (dạng chuỗi) được chuyển đổi thành vector one-hot. Ví dụ: `Happy` -> `[0, 1, 0, 0, 0, 0]`. Đây là định dạng đầu ra mà mô hình cần để tính toán hàm mất mát `CrossEntropyLoss`.
+-   **Tạo `Dataset` và `DataLoader`**:
+    -   Một lớp `EmotionDataset` tùy chỉnh được tạo ra để quản lý việc truy xuất ảnh và nhãn.
+    -   `DataLoader` được sử dụng để tạo các lô (batch) dữ liệu từ `Dataset`. Nó giúp quản lý việc xáo trộn dữ liệu (shuffle), tải dữ liệu song song, và tự động hóa quá trình đưa dữ liệu vào mô hình.
+-   **Biến đổi ảnh (Transforms)**:
+    -   **Resize**: Đồng bộ hóa kích thước tất cả các ảnh về `224x224`, kích thước đầu vào tiêu chuẩn của nhiều mô hình pre-trained.
+    -   **ToTensor**: Chuyển đổi ảnh từ định dạng `PIL Image` (hoặc mảng NumPy) sang `Tensor` của PyTorch.
+    -   **Normalize**: Chuẩn hóa các giá trị pixel của ảnh bằng cách sử dụng trung bình (mean) và độ lệch chuẩn (std) của tập dữ liệu ImageNet. Đây là một bước bắt buộc khi sử dụng các mô hình pre-trained trên ImageNet, vì nó đảm bảo rằng dữ liệu đầu vào của chúng ta có cùng phân phối với dữ liệu mà mô hình đã được huấn luyện.
 
-Mạng nơ-ron tích chập (CNN), kiến trúc được sử dụng trong dự án này, được thiết kế để làm việc với dữ liệu dạng hình ảnh. Do đó, các tín hiệu âm thanh một chiều cần được chuyển đổi thành một biểu diễn hai chiều giống như hình ảnh. Mel Spectrogram là một lựa chọn phổ biến và hiệu quả cho việc này.
+## 5. Xây dựng Mô hình (Model Architecture)
 
-### 3.1. Chuyển đổi âm thanh thành Mel Spectrogram
+Dự án thử nghiệm với nhiều kiến trúc CNN pre-trained khác nhau để tìm ra mô hình tốt nhất. Nguyên tắc chung là **Học chuyển giao (Transfer Learning)**.
 
-- **Cố định độ dài**: Các đoạn âm thanh có độ dài khác nhau. Để đảm bảo đầu vào cho mô hình có kích thước đồng nhất, tất cả các đoạn âm thanh được cắt hoặc đệm (pad) để có cùng độ dài (3 giây).
-- **Tạo Mel Spectrogram**:
-    1.  **Short-Time Fourier Transform (STFT)**: Tín hiệu âm thanh được chia thành các khung (frame) ngắn chồng chéo nhau, và biến đổi Fourier được áp dụng trên từng khung để phân tích phổ tần số.
-    2.  **Mel Scale**: Phổ tần số sau đó được chuyển đổi sang thang đo Mel, một thang đo mô phỏng cách tai người cảm nhận tần số.
-    3.  **Logarithmic Scale**: Cuối cùng, biên độ được chuyển đổi sang thang đo decibel (dB), gần với cách con người cảm nhận âm lượng.
-- **Lưu đặc trưng**: Các Mel Spectrogram (dưới dạng mảng NumPy) được lưu vào thư mục `features/mels/` trong các thư mục con `train`, `val`, `test`.
+-   **Nguyên tắc**:
+    1.  Tải một mô hình đã được huấn luyện trên ImageNet (ví dụ: `ResNet18`).
+    2.  **Đóng băng (Freeze)** hầu hết các lớp của mô hình. Các lớp này đã học được các đặc trưng hình ảnh tổng quát (cạnh, góc, kết cấu...). Chúng ta giữ lại các trọng số này.
+    3.  **Mở băng (Unfreeze)** một vài lớp cuối. Các lớp này học các đặc trưng phức tạp và chuyên biệt hơn. Chúng ta cho phép chúng được cập nhật trong quá trình huấn luyện để thích nghi với dữ liệu Mel Spectrogram.
+    4.  **Thay thế lớp phân loại (Classifier)**: Lớp cuối cùng của mô hình gốc (thường có 1000 đầu ra cho ImageNet) được thay thế bằng một lớp phân loại mới, tùy chỉnh cho bài toán của chúng ta (6 đầu ra cho 6 cảm xúc). Lớp này sẽ được huấn luyện từ đầu.
 
-### 3.2. Chuyển đổi `.npy` thành `.png`
+-   **Các mô hình được sử dụng**:
+    -   `ResNet18`
+    -   `DenseNet121`
+    -   `VGG16`
+    -   `EfficientNet-B0`
 
-Để mô hình ResNet-50 có thể sử dụng, các mảng Mel Spectrogram được chuyển đổi thành tệp hình ảnh.
+-   **Lý do lựa chọn**: Các mô hình này có kiến trúc đa dạng, đại diện cho các trường phái thiết kế CNN khác nhau và đã chứng tỏ hiệu quả cao trên nhiều bài toán thị giác máy tính.
 
-- **Quy trình**:
-    1.  Tải tệp `.npy` chứa Mel Spectrogram.
-    2.  Sử dụng `librosa.display.specshow` để vẽ Mel Spectrogram lên một biểu đồ `matplotlib`. Các tham số như `cmap='inferno'` được sử dụng để tạo ra hình ảnh có màu sắc.
-    3.  Hình ảnh được lưu vào bộ nhớ đệm (buffer) dưới định dạng PNG.
-    4.  Sử dụng `PIL` và `OpenCV` để đọc lại hình ảnh từ bộ nhớ đệm và lưu nó dưới dạng tệp `.png` vào thư mục `features/images/`.
+## 6. Huấn luyện và Đánh giá
 
-## 4. Xây dựng và Huấn luyện mô hình
+### 6.1. Thiết lập Huấn luyện
 
-### 4.1. Chuẩn bị cho PyTorch
+-   **Hàm mất mát (Loss Function)**: `CrossEntropyLoss` với `label_smoothing=0.1`.
+    -   `CrossEntropyLoss` là lựa chọn tiêu chuẩn cho bài toán phân loại đa lớp.
+    -   `Label Smoothing` là một kỹ thuật điều chuẩn (regularization) giúp mô hình bớt "tự tin" một cách thái quá vào dự đoán của mình, từ đó giảm overfitting và tăng khả năng tổng quát hóa.
+-   **Trình tối ưu hóa (Optimizer)**: `AdamW`.
+    -   `AdamW` là một biến thể của Adam optimizer, cải thiện cách xử lý suy giảm trọng số (weight decay), thường cho kết quả tốt hơn.
+    -   Một **tỷ lệ học khác biệt (differential learning rate)** được áp dụng: các lớp được mở băng (gần đầu ra hơn) có tỷ lệ học cao hơn (`5e-5`), trong khi các lớp sâu hơn có tỷ lệ học thấp hơn (`1e-5`). Lý do là các lớp sâu hơn chỉ cần tinh chỉnh nhẹ, trong khi các lớp mới cần học nhanh hơn.
+-   **Bộ lập lịch Tỷ lệ học (Learning Rate Scheduler)**: `ReduceLROnPlateau`.
+    -   Cơ chế này sẽ tự động giảm tỷ lệ học khi hàm mất mát trên tập kiểm định (`val_loss`) không cải thiện sau một số `patience` epoch nhất định. Điều này giúp mô hình hội tụ tốt hơn ở giai đoạn cuối của quá trình huấn luyện.
+-   **Dừng sớm (Early Stopping)**:
+    -   Quá trình huấn luyện sẽ dừng lại nếu `val_loss` không cải thiện trong một số `PATIENCE` epoch liên tiếp (ở đây là 15).
+    -   Điều này giúp tiết kiệm thời gian tính toán và ngăn mô hình bắt đầu học vẹt (overfitting) khi nó không còn học được điều gì hữu ích nữa.
+    -   Mô hình có `val_loss` tốt nhất sẽ được lưu lại.
 
-- **`EmotionDataset`**: Một lớp Dataset tùy chỉnh được tạo để tải các hình ảnh Mel Spectrogram và nhãn tương ứng. Lớp này kế thừa từ `torch.utils.data.Dataset` và triển khai các phương thức `__len__` và `__getitem__`.
-- **`transforms`**: Các phép biến đổi hình ảnh được áp dụng trong quá trình tải dữ liệu.
-    - **Tập huấn luyện**: Bao gồm thay đổi kích thước, lật ngang ngẫu nhiên, xoay ngẫu nhiên và chuẩn hóa. Các phép biến đổi này cũng là một dạng tăng cường dữ liệu ở cấp độ hình ảnh.
-    - **Tập kiểm định**: Chỉ bao gồm thay đổi kích thước và chuẩn hóa để đảm bảo dữ liệu nhất quán.
-- **`DataLoader`**: Tạo các trình tải dữ liệu cho tập huấn luyện và kiểm định. `DataLoader` quản lý việc tạo các lô (batch) dữ liệu, xáo trộn dữ liệu (shuffle) cho tập huấn luyện, và sử dụng đa luồng để tăng tốc độ tải dữ liệu.
+### 6.2. Quá trình Huấn luyện và Kiểm định
 
-### 4.2. Thiết lập mô hình (ResNet-50)
+-   Trong mỗi epoch, mô hình thực hiện hai pha:
+    1.  **Pha Huấn luyện (Train Phase)**: Mô hình học từ tập `train_loader`. Trọng số được cập nhật.
+    2.  **Pha Kiểm định (Validation Phase)**: Mô hình được đánh giá trên tập `val_loader`. Trọng số không được cập nhật. Kết quả ở pha này được dùng để theo dõi hiệu suất và ra quyết định (giảm learning rate, dừng sớm, lưu mô hình).
+-   Các chỉ số `Loss`, `Accuracy`, `F1-score`, `Recall`, `Precision` được ghi lại cho cả hai tập để theo dõi.
 
-- **Học chuyển giao (Transfer Learning)**: Thay vì xây dựng một mô hình từ đầu, chúng ta sử dụng mô hình **ResNet-50** đã được huấn luyện trước trên tập dữ liệu ImageNet. Kiến trúc này đã học được các đặc trưng hình ảnh cấp thấp và trung bình rất tốt.
-- **Đóng băng các lớp**: Tất cả các trọng số của các lớp tích chập trong ResNet-50 được "đóng băng" (`param.requires_grad = False`). Điều này có nghĩa là chúng sẽ không được cập nhật trong quá trình huấn luyện.
-- **Thay thế lớp cuối cùng**: Lớp phân loại cuối cùng (fully connected layer) của ResNet-50, vốn được thiết kế cho 1000 lớp của ImageNet, được thay thế bằng một lớp `nn.Linear` mới. Lớp này có đầu ra bằng với số lượng cảm xúc cần nhận dạng trong bài toán của chúng ta.
-- **Chỉ huấn luyện lớp mới**: Chỉ có các tham số của lớp phân loại mới này được huấn luyện. Điều này giúp mô hình thích nghi nhanh chóng với tác vụ mới mà không làm mất đi các kiến thức đã học.
+### 6.3. Đánh giá trên Tập Thử nghiệm (Test)
 
-### 4.3. Vòng lặp huấn luyện
+-   Sau khi quá trình huấn luyện kết thúc, mô hình có hiệu suất tốt nhất trên tập kiểm định được tải lại.
+-   Mô hình được đánh giá lần cuối trên tập `test_loader`. Đây là kết quả cuối cùng, phản ánh hiệu suất của mô hình trên dữ liệu hoàn toàn mới.
+-   **Classification Report**: Cung cấp một báo cáo chi tiết về `precision`, `recall`, `f1-score` cho từng lớp cảm xúc.
+-   **Confusion Matrix (Ma trận nhầm lẫn)**: Trực quan hóa hiệu suất của mô hình. Nó cho thấy mô hình dự đoán đúng bao nhiêu mẫu cho mỗi lớp và thường nhầm lẫn giữa các lớp nào.
 
-- **Hàm `train_model`**: Hàm này chứa logic chính cho việc huấn luyện và kiểm định mô hình qua nhiều kỷ nguyên (epoch).
-- **Các giai đoạn (Phase)**: Trong mỗi epoch, mô hình trải qua hai giai đoạn: `train` và `val`.
-    - **Giai đoạn `train`**: Mô hình được đặt ở chế độ `model.train()`. Quá trình lan truyền ngược (backpropagation) và cập nhật trọng số được kích hoạt.
-    - **Giai đoạn `val`**: Mô hình được đặt ở chế độ `model.eval()`. Việc tính toán gradient bị tắt để tiết kiệm bộ nhớ và tăng tốc độ.
-- **Quy trình trong mỗi giai đoạn**:
-    1.  Lặp qua các batch dữ liệu từ `DataLoader`.
-    2.  Đưa dữ liệu và nhãn lên thiết bị tính toán (CPU hoặc GPU).
-    3.  Dự đoán đầu ra với mô hình.
-    4.  Tính toán hàm mất mát (loss) bằng `nn.CrossEntropyLoss`.
-    5.  (Chỉ trong giai đoạn train) Thực hiện lan truyền ngược và cập nhật trọng số bằng `optimizer.step()`.
-    6.  Tính toán và tích lũy loss và độ chính xác (accuracy).
-- **Lưu mô hình tốt nhất**: Sau mỗi epoch, độ chính xác trên tập kiểm định được so sánh với độ chính xác tốt nhất đã đạt được. Nếu mô hình hiện tại tốt hơn, trọng số của nó sẽ được lưu lại vào tệp `best_model.pth`.
+## 7. Kết luận
 
-## 5. Đánh giá mô hình
-
-Sau khi quá trình huấn luyện hoàn tất, mô hình với hiệu suất tốt nhất trên tập kiểm định được tải lại và đánh giá trên cả tập kiểm định và tập kiểm thử.
-
-- **Hàm `evaluate_model`**: Hàm này lấy đầu vào là mô hình và một `DataLoader`, sau đó trả về tất cả các nhãn thực tế và nhãn dự đoán.
-- **Các chỉ số đánh giá**:
-    - **`classification_report`**: Cung cấp các chỉ số chi tiết cho từng lớp cảm xúc, bao gồm Precision, Recall, và F1-score.
-    - **`confusion_matrix` (Ma trận nhầm lẫn)**: Một bảng trực quan hóa hiệu suất của mô hình. Các hàng đại diện cho các lớp thực tế, các cột đại diện cho các lớp dự đoán. Nó cho thấy mô hình thường nhầm lẫn giữa các cặp cảm xúc nào.
-- **Đánh giá trên tập Test**: Đây là bước cuối cùng và quan trọng nhất, cho thấy mô hình hoạt động tốt như thế nào trên dữ liệu hoàn toàn mới mà nó chưa từng thấy. Kết quả trên tập này là thước đo cuối cùng về hiệu suất của mô hình.
-
-## Kết luận
-
-Notebook này đã trình bày một quy trình hoàn chỉnh và chi tiết để giải quyết bài toán nhận dạng cảm xúc trong giọng nói. Bằng cách kết hợp các kỹ thuật tiền xử lý âm thanh tiên tiến, trích xuất đặc trưng bằng Mel Spectrogram, và sức mạnh của học chuyển giao với kiến trúc ResNet-50, mô hình đã được xây dựng và đánh giá một cách có hệ thống. Các kết quả đánh giá trên tập kiểm thử cung cấp một cái nhìn khách quan về khả năng của mô hình trong việc nhận dạng cảm xúc từ các mẫu giọng nói thực tế.
+Dự án đã xây dựng thành công một quy trình hoàn chỉnh để nhận dạng cảm xúc qua giọng nói bằng cách sử dụng phương pháp chuyển đổi sang Mel Spectrogram và học chuyển giao. Việc thử nghiệm với nhiều kiến trúc CNN khác nhau cho phép so sánh và lựa chọn mô hình phù hợp nhất cho bài toán. Các kỹ thuật như phân chia dữ liệu theo nhóm, tăng cường dữ liệu, và các chiến lược huấn luyện nâng cao (learning rate scheduler, early stopping) đều đóng vai trò quan trọng trong việc xây dựng một mô hình mạnh mẽ và có khả năng tổng quát hóa tốt.
