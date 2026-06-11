@@ -1,8 +1,9 @@
---extra-index-url https://download.pytorch.org/whl/cu126
+--index-url https://download.pytorch.org/whl/cu126
+--extra-index-url https://pypi.org/simple
 
-torch
-torchvision
-torchaudio
+torch==2.11.0
+torchvision==0.26.0
+torchaudio==2.11.0
 
 ipywidgets>=7.0.0
 tqdm
@@ -13,10 +14,10 @@ matplotlib
 seaborn
 scikit-learn
 kagglehub
-scikit-learn
 ipykernel
 IPython
 opencv-python
 soundfile
 pydub
 ttach
+pillow
