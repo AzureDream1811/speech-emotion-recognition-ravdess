@@ -151,13 +151,13 @@ spectrograms/
 dataset/
 features/
 CSVs/
-*_augmented/
-*_silenced/
-best_model.pth
-build_ResNet.pth
-build_DenseNet.pth
-build_EfficientNet.pth
-build_VGG.pth
+.idea/
+
+# Model checkpoints
+BuildResnet.pth
+BuildDenseNet.pth
+BuildVGG16.pth
+
 
 # Spyder project settings
 .spyderproject

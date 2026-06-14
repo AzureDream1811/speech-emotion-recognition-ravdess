@@ -1,146 +1,134 @@
-# Nhận Dạng Cảm Xúc Qua Giọng Nói
+# Báo cáo Dự án: Nhận dạng Cảm xúc qua Giọng nói (Speech Emotion Recognition)
 
-Dự án này xây dựng một quy trình học sâu (deep learning) để nhận dạng cảm xúc của con người từ giọng nói. Hệ thống xử lý các file âm thanh thô, chuyển đổi chúng thành dạng biểu diễn hình ảnh (Mel Spectrogram), và sau đó sử dụng một Mạng Nơ-ron Tích chập (CNN) để phân loại cảm xúc.
+## 1. Giới thiệu
 
-## 🚀 Tính Năng
+### 1.1. Mục tiêu
 
-- **Quy Trình Toàn Diện**: Từ âm thanh thô đến phân loại cảm xúc.
-- **Tiền Xử Lý Dữ Liệu**: Bao gồm loại bỏ khoảng lặng và tăng cường dữ liệu (thêm nhiễu, thay đổi cao độ, co giãn thời gian) để tạo ra một bộ dữ liệu mạnh mẽ.
-- **Trích Xuất Đặc Trưng**: Chuyển đổi tín hiệu âm thanh thành hình ảnh Mel Spectrogram, phù hợp cho các mô hình CNN.
-- **Mô Hình Học Sâu**: Sử dụng mô hình ResNet đã được huấn luyện trước (pre-trained) và tinh chỉnh (fine-tuning) để đạt độ chính xác cao.
-- **Kỹ Thuật Huấn Luyện Nâng Cao**: Áp dụng scheduler `OneCycleLR`, trình tối ưu hóa `AdamW`, và Test Time Augmentation (TTA) để cải thiện hiệu suất.
-- **Quy Trình Có Cấu Trúc**: Toàn bộ quy trình được tổ chức thành một chuỗi các file Jupyter Notebook.
+Dự án này nhằm xây dựng một hệ thống có khả năng nhận dạng cảm xúc của con người thông qua tín hiệu giọng nói. Hệ thống sẽ phân loại các đoạn âm thanh thành các lớp cảm xúc cơ bản như: Giận dữ (Anger), Ghê tởm (Disgust), Sợ hãi (Fear), Vui vẻ (Happy), Trung tính (Neutral), và Buồn (Sad).
 
-## 📂 Cấu Trúc Dự Án
+### 1.2. Tập dữ liệu
 
-```
-.
-├── 1_Preparedataset.ipynb      # Notebook để làm sạch, tăng cường và chia dữ liệu.
-├── 2_FeatureExtraction.ipynb   # Notebook để chuyển đổi âm thanh thành Mel Spectrogram.
-├── 3_CNN-classification.ipynb  # Notebook để huấn luyện và đánh giá mô hình CNN.
-├── requirements.txt            # Các gói Python cần thiết.
-├── dataset/                    # Thư mục chứa các bộ dữ liệu âm thanh thô (RAVDESS, CREMA-D).
-├── CSVs/                       # Lưu các file CSV chứa đường dẫn file và nhãn.
-├── features/                   # Lưu các đặc trưng đã trích xuất (ảnh Mel Spectrogram).
-└── ...
-```
+Dự án sử dụng tập dữ liệu **CREMA-D (Crowd-sourced Emotional Multimodal Actors Dataset)**. Đây là một bộ dữ liệu đa phương thức chứa các bản ghi âm và video của các diễn viên thể hiện cảm xúc. Trong dự án này, chúng ta chỉ tập trung vào phần âm thanh (AudioWAV).
 
-## ⚙️ Cài Đặt
+### 1.3. Hướng tiếp cận
 
-Thực hiện theo các bước sau để thiết lập môi trường cho dự án.
+Hướng tiếp cận chính của dự án là chuyển đổi bài toán từ phân loại chuỗi thời gian (tín hiệu âm thanh) sang bài toán phân loại hình ảnh. Quy trình tổng thể như sau:
 
-### 1. Clone Repository
+1. **Tiền xử lý âm thanh**: Tín hiệu âm thanh thô được xử lý để loại bỏ nhiễu và các phần không chứa thông tin.
+2. **Trích xuất đặc trưng**: Mỗi tệp âm thanh được chuyển đổi thành một ảnh **Mel Spectrogram**. Mel Spectrogram là một biểu đồ biểu diễn phổ năng lượng của tín hiệu âm thanh theo thang Mel, mô phỏng gần hơn với cách tai người cảm nhận âm thanh.
+3. **Huấn luyện mô hình**: Sử dụng các kiến trúc mạng nơ-ron tích chập (Convolutional Neural Network - CNN) đã được huấn luyện trước (pre-trained) trên tập dữ liệu ImageNet để huấn luyện mô hình phân loại các ảnh Mel Spectrogram.
+4. **Đánh giá**: Đánh giá hiệu suất của mô hình trên tập dữ liệu thử nghiệm.
 
-```bash
-git clone https://github.com/AzureDream1811/speech-emotion-recognition-ravdess.git
-cd speech-emotion-recognition-ravdess
-```
+Lý do chọn hướng tiếp cận này là vì các mô hình CNN pre-trained (như ResNet, DenseNet, VGG, EfficientNet) đã học được các đặc trưng hình ảnh rất mạnh mẽ từ tập ImageNet. Bằng cách chuyển âm thanh thành ảnh, chúng ta có thể tận dụng sức mạnh của học chuyển giao (Transfer Learning), giúp mô hình học nhanh hơn, hiệu quả hơn và yêu cầu ít dữ liệu hơn so với việc xây dựng một mô hình từ đầu.
 
-### 2. Tạo Môi Trường Ảo
+## 2. Tiền xử lý dữ liệu
 
-Rất khuyến khích sử dụng môi trường ảo để quản lý các gói phụ thuộc.
+### 2.1. Tải và Khám phá Dữ liệu
 
-```bash
-# Tạo môi trường ảo
-python -m venv .venv
+- **Tải dữ liệu**: Các tệp âm thanh từ thư mục `dataset/CREMA-D/AudioWAV/` được quét và thông tin về `speaker` (người nói), `path` (đường dẫn tệp), và `emotion` (cảm xúc) được trích xuất từ tên tệp.
+- **Phân tích**: Dữ liệu được lưu vào một `DataFrame` của Pandas. Biểu đồ phân phối cảm xúc cho thấy dữ liệu tương đối cân bằng giữa các lớp, đây là một điều kiện thuận lợi cho việc huấn luyện mô hình.
 
-# Kích hoạt môi trường
-# Trên Windows
-.venv\Scripts\activate
-# Trên macOS/Linux
-source .venv/bin/activate
-```
+### 2.2. Loại bỏ Khoảng lặng (Silence Removal)
 
-### 3. Cài Đặt Các Gói Phụ Thuộc
+- **Vấn đề**: Các tệp âm thanh thường chứa các khoảng lặng ở đầu và cuối. Những khoảng lặng này không mang thông tin về cảm xúc và có thể được xem là nhiễu, làm giảm hiệu suất của mô hình.
+- **Giải pháp**: Sử dụng thư viện `pydub` để phát hiện và cắt bỏ các khoảng lặng này. Một ngưỡng âm lượng (`-50.0 dBFS`) được sử dụng để xác định đâu là khoảng lặng.
+- **Kết quả**: Các tệp âm thanh đã được xử lý được lưu vào thư mục `dataset_silenced/`, và một tệp CSV mới (`CSVs/dataset_silenced.csv`) được tạo ra để theo dõi.
 
-Cài đặt tất cả các gói cần thiết từ file `requirements.txt`.
+### 2.3. Phân chia Tập dữ liệu (Train/Validation/Test Split)
 
-```bash
-pip install -r requirements.txt
-```
+- **Sự cần thiết**: Để huấn luyện và đánh giá mô hình một cách khách quan, dữ liệu cần được chia thành 3 tập riêng biệt:
+  - **Tập huấn luyện (Train set)**: Dùng để huấn luyện mô hình.
+  - **Tập kiểm định (Validation set)**: Dùng để tinh chỉnh các siêu tham số (hyperparameters) và theo dõi quá trình huấn luyện, tránh tình trạng học vẹt (overfitting).
+  - **Tập thử nghiệm (Test set)**: Dùng để đánh giá hiệu suất cuối cùng của mô hình trên dữ liệu mà nó chưa từng thấy.
+- **Phương pháp**: `GroupShuffleSplit` từ `scikit-learn` được sử dụng.
+- **Lý do chọn `GroupShuffleSplit`**: Trong tập dữ liệu này, mỗi người nói có nhiều bản ghi âm. Nếu chỉ chia ngẫu nhiên, các bản ghi của cùng một người nói có thể xuất hiện trong cả ba tập dữ liệu. Điều này có thể khiến mô hình "nhớ" giọng của người nói thay vì học các đặc trưng cảm xúc thực sự. `GroupShuffleSplit` đảm bảo rằng tất cả các bản ghi của một người nói chỉ thuộc về một tập duy nhất (train, val, hoặc test). Điều này giúp mô hình có khả năng tổng quát hóa tốt hơn với giọng nói của những người mới.
+- **Tỷ lệ phân chia**: 80% cho tập huấn luyện, 10% cho tập kiểm định, và 10% cho tập thử nghiệm.
 
-### 4. Cài Đặt FFmpeg (Để Loại Bỏ Khoảng Lặng)
+### 2.4. Tăng cường Dữ liệu (Data Augmentation)
 
-Bước loại bỏ khoảng lặng trong `1_Preparedataset.ipynb` yêu cầu FFmpeg.
+- **Vấn đề**: Để mô hình có khả năng chống nhiễu và tổng quát hóa tốt hơn, chúng ta cần làm cho dữ liệu huấn luyện đa dạng hơn.
+- **Giải pháp**: Áp dụng các kỹ thuật tăng cường dữ liệu âm thanh một cách ngẫu nhiên cho tập huấn luyện:
+  - **Thêm nhiễu (Noise)**: Thêm nhiễu ngẫu nhiên vào tín hiệu.
+  - **Kéo dài/Co giãn thời gian (Time Stretch)**: Thay đổi tốc độ của âm thanh mà không làm thay đổi cao độ.
+  - **Thay đổi cao độ (Pitch Shift)**: Thay đổi cao độ của âm thanh mà không làm thay đổi tốc độ.
+- **Thực hiện**: Mỗi tệp âm thanh trong tập huấn luyện được giữ lại bản gốc và tạo thêm một phiên bản tăng cường. Dữ liệu tăng cường được lưu vào `dataset_augmented/`.
 
-- **Windows**: Tải file thực thi của FFmpeg, sau đó thêm đường dẫn đến thư mục `bin` vào biến môi trường PATH của hệ thống.
-- **macOS**: `brew install ffmpeg`
-- **Linux**: `sudo apt-get install ffmpeg`
+## 3. Chuyển đổi sang Mel Spectrogram
 
-### 5. Tải Dữ Liệu
+Đây là bước cốt lõi của phương pháp tiếp cận.
 
-Dự án này sử dụng bộ dữ liệu **CREMA-D** và **RAVDESS**.
+- **Mel Spectrogram là gì?**: Nó là một biểu đồ 2D biểu diễn sự thay đổi của phổ năng lượng tín hiệu âm thanh theo thời gian. Trục hoành là thời gian, trục tung là tần số (theo thang Mel), và màu sắc biểu thị cường độ (biên độ) tại mỗi điểm thời gian-tần số.
+- **Tại sao lại dùng Mel Spectrogram?**:
+  - Nó mô phỏng cách tai người cảm nhận tần số, tập trung nhiều hơn vào các tần số thấp, nơi chứa nhiều thông tin quan trọng của giọng nói.
+  - Nó biến đổi tín hiệu 1D (âm thanh) thành biểu diễn 2D (ảnh), cho phép chúng ta áp dụng các mô hình CNN mạnh mẽ.
+- **Quá trình thực hiện**:
+  1. Sử dụng thư viện `librosa` để tải tệp âm thanh.
+  2. Tính toán Mel Spectrogram từ tín hiệu âm thanh. Các tham số quan trọng (`N_MELS`, `N_FFT`, `HOP_LENGTH`) quyết định độ phân giải về tần số và thời gian của ảnh.
+  3. Chuyển đổi biên độ sang thang decibel (dB) để nén dải động và làm nổi bật các đặc trưng.
+  4. Vẽ spectrogram và lưu dưới dạng tệp ảnh PNG (`.png`) không có trục và viền.
+- **Lưu trữ**: Các ảnh được tạo ra được lưu vào `features/images/`. Dữ liệu ảnh (dưới dạng mảng NumPy) và nhãn tương ứng được lưu vào các tệp `.npy` (`features/*.npy`) để tăng tốc độ tải dữ liệu trong các lần chạy sau.
 
-1.  Tải các bộ dữ liệu từ nguồn chính thức của chúng.
-2.  Tạo một thư mục có tên `dataset` trong thư mục gốc của dự án.
-3.  Đặt các file âm thanh theo cấu trúc sau:
-    ```
-    dataset/
-    ├── CREMA-D/
-    │   └── AudioWAV/
-    │       ├── 1001_DFA_ANG_XX.wav
-    │       └── ...
-    └── ravdess/
-        ├── Actor_01/
-        │   ├── 03-01-01-01-01-01-01.wav
-        │   └── ...
-        └── Actor_02/
-            └── ...
-    ```
+## 4. Tải dữ liệu và Tạo Data Loader
 
-## 📈 Quy Trình - Hướng Dẫn Chạy
+- **Tải dữ liệu ảnh**: Các tệp `.npy` chứa mảng ảnh và nhãn được tải vào bộ nhớ.
+- **One-Hot Encoding**: Nhãn cảm xúc (dạng chuỗi) được chuyển đổi thành vector one-hot. Ví dụ: `Happy` -> `[0, 1, 0, 0, 0, 0]`. Đây là định dạng đầu ra mà mô hình cần để tính toán hàm mất mát `CrossEntropyLoss`.
+- **Tạo `Dataset` và `DataLoader`**:
+  - Một lớp `EmotionDataset` tùy chỉnh được tạo ra để quản lý việc truy xuất ảnh và nhãn.
+  - `DataLoader` được sử dụng để tạo các lô (batch) dữ liệu từ `Dataset`. Nó giúp quản lý việc xáo trộn dữ liệu (shuffle), tải dữ liệu song song, và tự động hóa quá trình đưa dữ liệu vào mô hình.
+- **Biến đổi ảnh (Transforms)**:
+  - **Resize**: Đồng bộ hóa kích thước tất cả các ảnh về `224x224`, kích thước đầu vào tiêu chuẩn của nhiều mô hình pre-trained.
+  - **ToTensor**: Chuyển đổi ảnh từ định dạng `PIL Image` (hoặc mảng NumPy) sang `Tensor` của PyTorch.
+  - **Normalize**: Chuẩn hóa các giá trị pixel của ảnh bằng cách sử dụng trung bình (mean) và độ lệch chuẩn (std) của tập dữ liệu ImageNet. Đây là một bước bắt buộc khi sử dụng các mô hình pre-trained trên ImageNet, vì nó đảm bảo rằng dữ liệu đầu vào của chúng ta có cùng phân phối với dữ liệu mà mô hình đã được huấn luyện.
 
-Dự án được chia thành ba notebook chính. Hãy chạy chúng theo thứ tự sau.
+## 5. Xây dựng Mô hình (Model Architecture)
 
-### Bước 1: Chuẩn Bị Dữ Liệu
+Dự án thử nghiệm với nhiều kiến trúc CNN pre-trained khác nhau để tìm ra mô hình tốt nhất. Nguyên tắc chung là **Học chuyển giao (Transfer Learning)**.
 
-**Notebook:** [1_Preparedataset.ipynb](1_Preparedataset.ipynb)
+- **Nguyên tắc**:
+  1. Tải một mô hình đã được huấn luyện trên ImageNet (ví dụ: `ResNet18`).
+  2. **Đóng băng (Freeze)** hầu hết các lớp của mô hình. Các lớp này đã học được các đặc trưng hình ảnh tổng quát (cạnh, góc, kết cấu...). Chúng ta giữ lại các trọng số này.
+  3. **Mở băng (Unfreeze)** một vài lớp cuối. Các lớp này học các đặc trưng phức tạp và chuyên biệt hơn. Chúng ta cho phép chúng được cập nhật trong quá trình huấn luyện để thích nghi với dữ liệu Mel Spectrogram.
+  4. **Thay thế lớp phân loại (Classifier)**: Lớp cuối cùng của mô hình gốc (thường có 1000 đầu ra cho ImageNet) được thay thế bằng một lớp phân loại mới, tùy chỉnh cho bài toán của chúng ta (6 đầu ra cho 6 cảm xúc). Lớp này sẽ được huấn luyện từ đầu.
 
-Notebook này xử lý tất cả các bước chuẩn bị dữ liệu ban đầu cho bộ dữ liệu CREMA-D.
+- **Các mô hình được sử dụng**:
+  - `ResNet18`
+  - `DenseNet121`
+  - `VGG16`
+  - `EfficientNet-B0`
 
-- **Tải đường dẫn âm thanh** và trích xuất nhãn (cảm xúc, người nói).
-- **Chia dữ liệu** thành các tập huấn luyện và kiểm thử, đảm bảo rằng người nói trong tập huấn luyện không xuất hiện trong tập kiểm thử (sử dụng `GroupShuffleSplit`).
-- **Loại bỏ khoảng lặng** ở đầu và cuối của các file âm thanh.
-- **Thực hiện tăng cường dữ liệu** trên tập huấn luyện bằng cách thêm nhiễu, co giãn thời gian, hoặc thay đổi cao độ.
-- **Lưu danh sách file cuối cùng** vào các file CSV trong thư mục `CSVs/`.
+- **Lý do lựa chọn**: Các mô hình này có kiến trúc đa dạng, đại diện cho các trường phái thiết kế CNN khác nhau và đã chứng tỏ hiệu quả cao trên nhiều bài toán thị giác máy tính.
 
-> **Chạy tất cả các ô (cell) trong notebook này từ trên xuống dưới.**
+## 6. Huấn luyện và Đánh giá
 
-### Bước 2: Trích Xuất Đặc Trưng (Mel Spectrograms)
+### 6.1. Thiết lập Huấn luyện
 
-**Notebook:** [2_FeatureExtraction.ipynb](2_FeatureExtraction.ipynb)
+- **Hàm mất mát (Loss Function)**: `CrossEntropyLoss` với `label_smoothing=0.1`.
+  - `CrossEntropyLoss` là lựa chọn tiêu chuẩn cho bài toán phân loại đa lớp.
+  - `Label Smoothing` là một kỹ thuật điều chuẩn (regularization) giúp mô hình bớt "tự tin" một cách thái quá vào dự đoán của mình, từ đó giảm overfitting và tăng khả năng tổng quát hóa.
+- **Trình tối ưu hóa (Optimizer)**: `AdamW`.
+  - `AdamW` là một biến thể của Adam optimizer, cải thiện cách xử lý suy giảm trọng số (weight decay), thường cho kết quả tốt hơn.
+  - Một **tỷ lệ học khác biệt (differential learning rate)** được áp dụng: các lớp được mở băng (gần đầu ra hơn) có tỷ lệ học cao hơn (`5e-5`), trong khi các lớp sâu hơn có tỷ lệ học thấp hơn (`1e-5`). Lý do là các lớp sâu hơn chỉ cần tinh chỉnh nhẹ, trong khi các lớp mới cần học nhanh hơn.
+- **Bộ lập lịch Tỷ lệ học (Learning Rate Scheduler)**: `ReduceLROnPlateau`.
+  - Cơ chế này sẽ tự động giảm tỷ lệ học khi hàm mất mát trên tập kiểm định (`val_loss`) không cải thiện sau một số `patience` epoch nhất định. Điều này giúp mô hình hội tụ tốt hơn ở giai đoạn cuối của quá trình huấn luyện.
+- **Dừng sớm (Early Stopping)**:
+  - Quá trình huấn luyện sẽ dừng lại nếu `val_loss` không cải thiện trong một số `PATIENCE` epoch liên tiếp (ở đây là 15).
+  - Điều này giúp tiết kiệm thời gian tính toán và ngăn mô hình bắt đầu học vẹt (overfitting) khi nó không còn học được điều gì hữu ích nữa.
+  - Mô hình có `val_loss` tốt nhất sẽ được lưu lại.
 
-Notebook này chuyển đổi các file âm thanh đã được tiền xử lý thành hình ảnh Mel Spectrogram, đây sẽ là đầu vào cho mô hình CNN của chúng ta.
+### 6.2. Quá trình Huấn luyện và Kiểm định
 
-- **Tải các file CSV** được tạo ở bước trước.
-- **Lặp qua từng file âm thanh**, chuẩn hóa độ dài của nó về một khoảng thời gian tiêu chuẩn (3 giây).
-- **Tạo một Mel Spectrogram** cho mỗi file âm thanh.
-- **Lưu các spectrogram dưới dạng ảnh PNG** vào các thư mục `features/images/train` và `features/images/test`.
-- **Tạo các file CSV mới** (`train_images.csv`, `test_images.csv`) để ánh xạ các ảnh này với cảm xúc và người nói tương ứng.
+- Trong mỗi epoch, mô hình thực hiện hai pha:
+  1. **Pha Huấn luyện (Train Phase)**: Mô hình học từ tập `train_loader`. Trọng số được cập nhật.
+  2. **Pha Kiểm định (Validation Phase)**: Mô hình được đánh giá trên tập `val_loader`. Trọng số không được cập nhật. Kết quả ở pha này được dùng để theo dõi hiệu suất và ra quyết định (giảm learning rate, dừng sớm, lưu mô hình).
+- Các chỉ số `Loss`, `Accuracy`, `F1-score`, `Recall`, `Precision` được ghi lại cho cả hai tập để theo dõi.
 
-> **Chạy tất cả các ô trong notebook này từ trên xuống dưới.**
+### 6.3. Đánh giá trên Tập Thử nghiệm (Test)
 
-### Bước 3: Huấn Luyện Mô Hình CNN
+- Sau khi quá trình huấn luyện kết thúc, mô hình có hiệu suất tốt nhất trên tập kiểm định được tải lại.
+- Mô hình được đánh giá lần cuối trên tập `test_loader`. Đây là kết quả cuối cùng, phản ánh hiệu suất của mô hình trên dữ liệu hoàn toàn mới.
+- **Classification Report**: Cung cấp một báo cáo chi tiết về `precision`, `recall`, `f1-score` cho từng lớp cảm xúc.
+- **Confusion Matrix (Ma trận nhầm lẫn)**: Trực quan hóa hiệu suất của mô hình. Nó cho thấy mô hình dự đoán đúng bao nhiêu mẫu cho mỗi lớp và thường nhầm lẫn giữa các lớp nào.
 
-**Notebook:** [3_CNN-classification.ipynb](3_CNN-classification.ipynb)
+## 7. Kết luận
 
-Đây là bước cuối cùng, nơi chúng ta huấn luyện và đánh giá mô hình nhận dạng cảm xúc.
-
-- **Định nghĩa các phép biến đổi** và tăng cường dữ liệu cho ảnh spectrogram.
-- **Tạo các đối tượng `Dataset` và `DataLoader`** cho việc huấn luyện, xác thực và kiểm thử.
-- **Xây dựng mô hình ResNet** sử dụng học chuyển giao (transfer learning), tinh chỉnh nó cho tác vụ cụ thể của chúng ta.
-- **Huấn luyện mô hình** bằng tập huấn luyện và đánh giá nó trên tập xác thực sau mỗi epoch.
-- **Áp dụng Early Stopping** để ngăn chặn overfitting và lưu lại mô hình tốt nhất dựa trên điểm F1-score.
-- **Đánh giá mô hình cuối cùng** trên tập kiểm thử chưa từng thấy bằng cách sử dụng **Test Time Augmentation (TTA)** để tăng cường độ chính xác.
-
-> **Chạy tất cả các ô trong notebook này để huấn luyện mô hình và xem các chỉ số hiệu suất cuối cùng.**
-
-## 📊 Kết Quả
-
-Hiệu suất của mô hình được đánh giá bằng các chỉ số Accuracy, F1-Score, Precision và Recall. Kết quả cuối cùng trên tập kiểm thử được in ra ở cuối notebook `3_CNN-classification.ipynb`.
-
-*(Bạn có thể thêm bảng kết quả cuối cùng của mình vào đây sau khi chạy toàn bộ quy trình)*
-
-| Model    | Accuracy | F1-Score |
-| -------- | -------- | -------- |
-| ResNet34 | ...      | ...      |
+Dự án đã xây dựng thành công một quy trình hoàn chỉnh để nhận dạng cảm xúc qua giọng nói bằng cách sử dụng phương pháp chuyển đổi sang Mel Spectrogram và học chuyển giao. Việc thử nghiệm với nhiều kiến trúc CNN khác nhau cho phép so sánh và lựa chọn mô hình phù hợp nhất cho bài toán. Các kỹ thuật như phân chia dữ liệu theo nhóm, tăng cường dữ liệu, và các chiến lược huấn luyện nâng cao (learning rate scheduler, early stopping) đều đóng vai trò quan trọng trong việc xây dựng một mô hình mạnh mẽ và có khả năng tổng quát hóa tốt.
