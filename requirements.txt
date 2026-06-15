@@ -21,3 +21,5 @@ soundfile
 pydub
 ttach
 pillow
+joblib
+prettytable
