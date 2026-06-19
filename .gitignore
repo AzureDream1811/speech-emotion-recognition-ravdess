@@ -151,6 +151,7 @@ spectrograms/
 data/
 features/
 CSVs/
+plots/
 checkpoints/
 mel_images/
 .idea/
