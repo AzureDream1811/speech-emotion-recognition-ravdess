@@ -23,3 +23,6 @@ ttach
 pillow
 joblib
 prettytable
+PyWavelets
+soundfile
+fastai

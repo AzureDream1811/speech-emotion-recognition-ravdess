@@ -148,7 +148,7 @@ venv.bak/
 __pycache__/
 result/
 spectrograms/
-dataset/
+data/
 features/
 CSVs/
 checkpoints/
