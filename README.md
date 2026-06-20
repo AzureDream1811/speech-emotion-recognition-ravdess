@@ -1,134 +1,278 @@
-# Báo cáo Dự án: Nhận dạng Cảm xúc qua Giọng nói (Speech Emotion Recognition)
+# Speech Emotion Recognition trên RAVDESS + SAVEE: So sánh MFCC+SVM, BiLSTM và ResNet34
+
+---
+
+## Abstract
+
+Bài báo cáo này trình bày kết quả thực nghiệm của ba mô hình học máy áp dụng cho bài toán nhận dạng cảm xúc từ giọng nói (Speech Emotion Recognition — SER): **(1)** SVM với đặc trưng MFCC, **(2)** BiLSTM với Log-Mel Spectrogram, và **(3)** ResNet34 (transfer learning từ ImageNet) với Log-Mel Spectrogram. Cả ba mô hình được huấn luyện và đánh giá trên cùng một tập dữ liệu kết hợp RAVDESS và SAVEE (1920 mẫu, 8 lớp cảm xúc), với cùng chiến lược chia dữ liệu 80/10/10. Mô hình ResNet34 đạt kết quả tốt nhất với **accuracy 75.00%** và **F1-macro 0.7503** trên tập test, vượt qua kết quả tốt nhất được báo cáo trong DeepEmoNet (Vu, 2025) là 66.7% trên tập validation.
+
+---
 
 ## 1. Giới thiệu
 
-### 1.1. Mục tiêu
+Nhận dạng cảm xúc từ giọng nói là một bài toán quan trọng trong xử lý ngôn ngữ nói, với ứng dụng trong giao tiếp người–máy, y tế, và giám sát cảm xúc. Bài toán gặp khó khăn do sự mơ hồ và phức tạp của cảm xúc con người, cũng như sự thiếu hụt dữ liệu huấn luyện.
 
-Dự án này nhằm xây dựng một hệ thống có khả năng nhận dạng cảm xúc của con người thông qua tín hiệu giọng nói. Hệ thống sẽ phân loại các đoạn âm thanh thành các lớp cảm xúc cơ bản như: Giận dữ (Anger), Ghê tởm (Disgust), Sợ hãi (Fear), Vui vẻ (Happy), Trung tính (Neutral), và Buồn (Sad).
+Báo cáo này tái hiện và mở rộng phương pháp của DeepEmoNet (Vu, 2025), so sánh ba pipeline xử lý âm thanh khác nhau về đặc trưng đầu vào và kiến trúc mô hình. Điểm khác biệt chính so với DeepEmoNet:
 
-### 1.2. Tập dữ liệu
+- Sử dụng **mean + std** của MFCC (40 chiều) thay vì chỉ mean (20 chiều)
+- BiLSTM được cải tiến với **Attention Pooling** và **SpecAugment**
+- Đánh giá trên **test set** thay vì validation set, đảm bảo ước lượng không thiên vị
 
-Dự án sử dụng tập dữ liệu **CREMA-D (Crowd-sourced Emotional Multimodal Actors Dataset)**. Đây là một bộ dữ liệu đa phương thức chứa các bản ghi âm và video của các diễn viên thể hiện cảm xúc. Trong dự án này, chúng ta chỉ tập trung vào phần âm thanh (AudioWAV).
+---
 
-### 1.3. Hướng tiếp cận
+## 2. Related Works
 
-Hướng tiếp cận chính của dự án là chuyển đổi bài toán từ phân loại chuỗi thời gian (tín hiệu âm thanh) sang bài toán phân loại hình ảnh. Quy trình tổng thể như sau:
+Các nghiên cứu trước đây về SER đã sử dụng nhiều phương pháp khác nhau. Schuller et al. (2003) dùng Hidden Markov Model để phát hiện cảm xúc từ các đặc trưng giọng nói. Demircan và Kahramanli (2018) kết hợp MFCC với fuzzy C-means và kNN. Lim et al. (2016) áp dụng CNN và LSTM trên biểu diễn STFT, cho kết quả tốt hơn các phương pháp truyền thống. DeepEmoNet (Vu, 2025) sử dụng cùng dataset RAVDESS+SAVEE, thử nghiệm SVM, LSTM, và ResNet34 với transfer learning, đạt 66.7% accuracy (validation set).
 
-1. **Tiền xử lý âm thanh**: Tín hiệu âm thanh thô được xử lý để loại bỏ nhiễu và các phần không chứa thông tin.
-2. **Trích xuất đặc trưng**: Mỗi tệp âm thanh được chuyển đổi thành một ảnh **Mel Spectrogram**. Mel Spectrogram là một biểu đồ biểu diễn phổ năng lượng của tín hiệu âm thanh theo thang Mel, mô phỏng gần hơn với cách tai người cảm nhận âm thanh.
-3. **Huấn luyện mô hình**: Sử dụng các kiến trúc mạng nơ-ron tích chập (Convolutional Neural Network - CNN) đã được huấn luyện trước (pre-trained) trên tập dữ liệu ImageNet để huấn luyện mô hình phân loại các ảnh Mel Spectrogram.
-4. **Đánh giá**: Đánh giá hiệu suất của mô hình trên tập dữ liệu thử nghiệm.
+---
 
-Lý do chọn hướng tiếp cận này là vì các mô hình CNN pre-trained (như ResNet, DenseNet, VGG, EfficientNet) đã học được các đặc trưng hình ảnh rất mạnh mẽ từ tập ImageNet. Bằng cách chuyển âm thanh thành ảnh, chúng ta có thể tận dụng sức mạnh của học chuyển giao (Transfer Learning), giúp mô hình học nhanh hơn, hiệu quả hơn và yêu cầu ít dữ liệu hơn so với việc xây dựng một mô hình từ đầu.
+## 3. Phương pháp
 
-## 2. Tiền xử lý dữ liệu
+### 3.1 Mô hình 1 — MFCC + SVM
 
-### 2.1. Tải và Khám phá Dữ liệu
+**Đặc trưng:** Với mỗi file âm thanh, trích xuất 20 MFCC coefficients, sau đó tính **mean** và **std** theo trục thời gian, ghép thành vector **40 chiều**. Chuẩn hóa bằng `StandardScaler` (fit trên train, transform val/test).
 
-- **Tải dữ liệu**: Các tệp âm thanh từ thư mục `dataset/CREMA-D/AudioWAV/` được quét và thông tin về `speaker` (người nói), `path` (đường dẫn tệp), và `emotion` (cảm xúc) được trích xuất từ tên tệp.
-- **Phân tích**: Dữ liệu được lưu vào một `DataFrame` của Pandas. Biểu đồ phân phối cảm xúc cho thấy dữ liệu tương đối cân bằng giữa các lớp, đây là một điều kiện thuận lợi cho việc huấn luyện mô hình.
+**Mô hình:** SVM nhân RBF, tối ưu siêu tham số bằng `GridSearchCV` với 5-fold cross-validation trên tập train:
 
-### 2.2. Loại bỏ Khoảng lặng (Silence Removal)
+| Siêu tham số | Lưới tìm kiếm |
+|---|---|
+| C | {0.1, 1, 10, 100} |
+| gamma | {'scale', 'auto', 0.001, 0.01} |
 
-- **Vấn đề**: Các tệp âm thanh thường chứa các khoảng lặng ở đầu và cuối. Những khoảng lặng này không mang thông tin về cảm xúc và có thể được xem là nhiễu, làm giảm hiệu suất của mô hình.
-- **Giải pháp**: Sử dụng thư viện `pydub` để phát hiện và cắt bỏ các khoảng lặng này. Một ngưỡng âm lượng (`-50.0 dBFS`) được sử dụng để xác định đâu là khoảng lặng.
-- **Kết quả**: Các tệp âm thanh đã được xử lý được lưu vào thư mục `dataset_silenced/`, và một tệp CSV mới (`CSVs/dataset_silenced.csv`) được tạo ra để theo dõi.
+Metric tối ưu: F1-weighted. Kết quả tốt nhất: **C=10, gamma='scale'**.
 
-### 2.3. Phân chia Tập dữ liệu (Train/Validation/Test Split)
+---
 
-- **Sự cần thiết**: Để huấn luyện và đánh giá mô hình một cách khách quan, dữ liệu cần được chia thành 3 tập riêng biệt:
-  - **Tập huấn luyện (Train set)**: Dùng để huấn luyện mô hình.
-  - **Tập kiểm định (Validation set)**: Dùng để tinh chỉnh các siêu tham số (hyperparameters) và theo dõi quá trình huấn luyện, tránh tình trạng học vẹt (overfitting).
-  - **Tập thử nghiệm (Test set)**: Dùng để đánh giá hiệu suất cuối cùng của mô hình trên dữ liệu mà nó chưa từng thấy.
-- **Phương pháp**: `GroupShuffleSplit` từ `scikit-learn` được sử dụng.
-- **Lý do chọn `GroupShuffleSplit`**: Trong tập dữ liệu này, mỗi người nói có nhiều bản ghi âm. Nếu chỉ chia ngẫu nhiên, các bản ghi của cùng một người nói có thể xuất hiện trong cả ba tập dữ liệu. Điều này có thể khiến mô hình "nhớ" giọng của người nói thay vì học các đặc trưng cảm xúc thực sự. `GroupShuffleSplit` đảm bảo rằng tất cả các bản ghi của một người nói chỉ thuộc về một tập duy nhất (train, val, hoặc test). Điều này giúp mô hình có khả năng tổng quát hóa tốt hơn với giọng nói của những người mới.
-- **Tỷ lệ phân chia**: 80% cho tập huấn luyện, 10% cho tập kiểm định, và 10% cho tập thử nghiệm.
+### 3.2 Mô hình 2 — Log-Mel Spectrogram + BiLSTM (v2)
 
-### 2.4. Tăng cường Dữ liệu (Data Augmentation)
+**Đặc trưng:** Log-Mel spectrogram với N_MELS=128, n_fft=1024, hop_length=512. Mỗi file được pad/trim về độ dài cố định MAX_STEPS=128 (~4.1s). Chuẩn hóa log-dB [-80, 0] → [0, 1].
 
-- **Vấn đề**: Để mô hình có khả năng chống nhiễu và tổng quát hóa tốt hơn, chúng ta cần làm cho dữ liệu huấn luyện đa dạng hơn.
-- **Giải pháp**: Áp dụng các kỹ thuật tăng cường dữ liệu âm thanh một cách ngẫu nhiên cho tập huấn luyện:
-  - **Thêm nhiễu (Noise)**: Thêm nhiễu ngẫu nhiên vào tín hiệu.
-  - **Kéo dài/Co giãn thời gian (Time Stretch)**: Thay đổi tốc độ của âm thanh mà không làm thay đổi cao độ.
-  - **Thay đổi cao độ (Pitch Shift)**: Thay đổi cao độ của âm thanh mà không làm thay đổi tốc độ.
-- **Thực hiện**: Mỗi tệp âm thanh trong tập huấn luyện được giữ lại bản gốc và tạo thêm một phiên bản tăng cường. Dữ liệu tăng cường được lưu vào `dataset_augmented/`.
+**Kiến trúc:**
 
-## 3. Chuyển đổi sang Mel Spectrogram
+```
+Input (B, 128, 128)
+  → BiLSTM × 2 (hidden=128, dropout=0.3, bidirectional) → (B, 128, 256)
+  → AttentionPool (learnable soft-attention) → (B, 256)
+  → BatchNorm1d(256)
+  → Dropout(0.4)
+  → Linear(256 → 8)
+```
 
-Đây là bước cốt lõi của phương pháp tiếp cận.
+Tổng số tham số: **662,281**.
 
-- **Mel Spectrogram là gì?**: Nó là một biểu đồ 2D biểu diễn sự thay đổi của phổ năng lượng tín hiệu âm thanh theo thời gian. Trục hoành là thời gian, trục tung là tần số (theo thang Mel), và màu sắc biểu thị cường độ (biên độ) tại mỗi điểm thời gian-tần số.
-- **Tại sao lại dùng Mel Spectrogram?**:
-  - Nó mô phỏng cách tai người cảm nhận tần số, tập trung nhiều hơn vào các tần số thấp, nơi chứa nhiều thông tin quan trọng của giọng nói.
-  - Nó biến đổi tín hiệu 1D (âm thanh) thành biểu diễn 2D (ảnh), cho phép chúng ta áp dụng các mô hình CNN mạnh mẽ.
-- **Quá trình thực hiện**:
-  1. Sử dụng thư viện `librosa` để tải tệp âm thanh.
-  2. Tính toán Mel Spectrogram từ tín hiệu âm thanh. Các tham số quan trọng (`N_MELS`, `N_FFT`, `HOP_LENGTH`) quyết định độ phân giải về tần số và thời gian của ảnh.
-  3. Chuyển đổi biên độ sang thang decibel (dB) để nén dải động và làm nổi bật các đặc trưng.
-  4. Vẽ spectrogram và lưu dưới dạng tệp ảnh PNG (`.png`) không có trục và viền.
-- **Lưu trữ**: Các ảnh được tạo ra được lưu vào `features/images/`. Dữ liệu ảnh (dưới dạng mảng NumPy) và nhãn tương ứng được lưu vào các tệp `.npy` (`features/*.npy`) để tăng tốc độ tải dữ liệu trong các lần chạy sau.
+**Kỹ thuật:**
+- **SpecAugment**: T_mask=20, F_mask=20, 2 masks mỗi loại (chỉ train)
+- **Class-weighted CrossEntropyLoss**: bù cho sự mất cân bằng lớp (neutral có ít mẫu hơn)
+- **Adam** lr=1e-3, weight_decay=1e-4
+- **ReduceLROnPlateau**: factor=0.5, patience=5
+- **Early stopping**: patience=15, dừng tại epoch 99
 
-## 4. Tải dữ liệu và Tạo Data Loader
+---
 
-- **Tải dữ liệu ảnh**: Các tệp `.npy` chứa mảng ảnh và nhãn được tải vào bộ nhớ.
-- **One-Hot Encoding**: Nhãn cảm xúc (dạng chuỗi) được chuyển đổi thành vector one-hot. Ví dụ: `Happy` -> `[0, 1, 0, 0, 0, 0]`. Đây là định dạng đầu ra mà mô hình cần để tính toán hàm mất mát `CrossEntropyLoss`.
-- **Tạo `Dataset` và `DataLoader`**:
-  - Một lớp `EmotionDataset` tùy chỉnh được tạo ra để quản lý việc truy xuất ảnh và nhãn.
-  - `DataLoader` được sử dụng để tạo các lô (batch) dữ liệu từ `Dataset`. Nó giúp quản lý việc xáo trộn dữ liệu (shuffle), tải dữ liệu song song, và tự động hóa quá trình đưa dữ liệu vào mô hình.
-- **Biến đổi ảnh (Transforms)**:
-  - **Resize**: Đồng bộ hóa kích thước tất cả các ảnh về `224x224`, kích thước đầu vào tiêu chuẩn của nhiều mô hình pre-trained.
-  - **ToTensor**: Chuyển đổi ảnh từ định dạng `PIL Image` (hoặc mảng NumPy) sang `Tensor` của PyTorch.
-  - **Normalize**: Chuẩn hóa các giá trị pixel của ảnh bằng cách sử dụng trung bình (mean) và độ lệch chuẩn (std) của tập dữ liệu ImageNet. Đây là một bước bắt buộc khi sử dụng các mô hình pre-trained trên ImageNet, vì nó đảm bảo rằng dữ liệu đầu vào của chúng ta có cùng phân phối với dữ liệu mà mô hình đã được huấn luyện.
+### 3.3 Mô hình 3 — Log-Mel Spectrogram + ResNet34
 
-## 5. Xây dựng Mô hình (Model Architecture)
+**Đặc trưng:** Log-Mel spectrogram (N_MELS=128, IMG_SIZE=128×128), chuẩn hóa [-80,0]→[0,1], nhân lên 3 kênh để phù hợp đầu vào RGB của ResNet34.
 
-Dự án thử nghiệm với nhiều kiến trúc CNN pre-trained khác nhau để tìm ra mô hình tốt nhất. Nguyên tắc chung là **Học chuyển giao (Transfer Learning)**.
+**Kiến trúc:** ResNet34 pretrained trên ImageNet. Thay thế layer `fc` cuối: Linear(512 → 8).
 
-- **Nguyên tắc**:
-  1. Tải một mô hình đã được huấn luyện trên ImageNet (ví dụ: `ResNet18`).
-  2. **Đóng băng (Freeze)** hầu hết các lớp của mô hình. Các lớp này đã học được các đặc trưng hình ảnh tổng quát (cạnh, góc, kết cấu...). Chúng ta giữ lại các trọng số này.
-  3. **Mở băng (Unfreeze)** một vài lớp cuối. Các lớp này học các đặc trưng phức tạp và chuyên biệt hơn. Chúng ta cho phép chúng được cập nhật trong quá trình huấn luyện để thích nghi với dữ liệu Mel Spectrogram.
-  4. **Thay thế lớp phân loại (Classifier)**: Lớp cuối cùng của mô hình gốc (thường có 1000 đầu ra cho ImageNet) được thay thế bằng một lớp phân loại mới, tùy chỉnh cho bài toán của chúng ta (6 đầu ra cho 6 cảm xúc). Lớp này sẽ được huấn luyện từ đầu.
+**Augmentation (chỉ train):**
+- RandomHorizontalFlip
+- RandomAffine(degrees=10, scale=0.9–1.1) — xoay và zoom
+- ColorJitter(brightness=0.3, contrast=0.3) — thay đổi độ sáng
+- **Mixup** (α=0.6): tạo tổ hợp lồi của cặp mẫu
 
-- **Các mô hình được sử dụng**:
-  - `ResNet18`
-  - `DenseNet121`
-  - `VGG16`
-  - `EfficientNet-B0`
+**Huấn luyện:**
+- **Adam** lr=1e-3
+- **ExponentialLR**: gamma=0.9/epoch
+- **CrossEntropyLoss** (soft labels qua Mixup)
+- **30 epochs** (DeepEmoNet protocol cho pretrained model)
+- Checkpoint tại epoch có val loss thấp nhất
 
-- **Lý do lựa chọn**: Các mô hình này có kiến trúc đa dạng, đại diện cho các trường phái thiết kế CNN khác nhau và đã chứng tỏ hiệu quả cao trên nhiều bài toán thị giác máy tính.
+---
 
-## 6. Huấn luyện và Đánh giá
+## 4. Thực nghiệm
 
-### 6.1. Thiết lập Huấn luyện
+### 4.1 Dữ liệu
 
-- **Hàm mất mát (Loss Function)**: `CrossEntropyLoss` với `label_smoothing=0.1`.
-  - `CrossEntropyLoss` là lựa chọn tiêu chuẩn cho bài toán phân loại đa lớp.
-  - `Label Smoothing` là một kỹ thuật điều chuẩn (regularization) giúp mô hình bớt "tự tin" một cách thái quá vào dự đoán của mình, từ đó giảm overfitting và tăng khả năng tổng quát hóa.
-- **Trình tối ưu hóa (Optimizer)**: `AdamW`.
-  - `AdamW` là một biến thể của Adam optimizer, cải thiện cách xử lý suy giảm trọng số (weight decay), thường cho kết quả tốt hơn.
-  - Một **tỷ lệ học khác biệt (differential learning rate)** được áp dụng: các lớp được mở băng (gần đầu ra hơn) có tỷ lệ học cao hơn (`5e-5`), trong khi các lớp sâu hơn có tỷ lệ học thấp hơn (`1e-5`). Lý do là các lớp sâu hơn chỉ cần tinh chỉnh nhẹ, trong khi các lớp mới cần học nhanh hơn.
-- **Bộ lập lịch Tỷ lệ học (Learning Rate Scheduler)**: `ReduceLROnPlateau`.
-  - Cơ chế này sẽ tự động giảm tỷ lệ học khi hàm mất mát trên tập kiểm định (`val_loss`) không cải thiện sau một số `patience` epoch nhất định. Điều này giúp mô hình hội tụ tốt hơn ở giai đoạn cuối của quá trình huấn luyện.
-- **Dừng sớm (Early Stopping)**:
-  - Quá trình huấn luyện sẽ dừng lại nếu `val_loss` không cải thiện trong một số `PATIENCE` epoch liên tiếp (ở đây là 15).
-  - Điều này giúp tiết kiệm thời gian tính toán và ngăn mô hình bắt đầu học vẹt (overfitting) khi nó không còn học được điều gì hữu ích nữa.
-  - Mô hình có `val_loss` tốt nhất sẽ được lưu lại.
+| Tập dữ liệu | Mẫu | Giới tính | Cảm xúc |
+|---|---|---|---|
+| RAVDESS | 1440 | 24 diễn viên (12 nam, 12 nữ) | 8 lớp (neutral có 96 mẫu, còn lại 192) |
+| SAVEE | 480 | 4 diễn viên nam | 7 lớp (không có calm; neutral=120) |
+| **Tổng** | **1920** | — | **8 lớp** |
 
-### 6.2. Quá trình Huấn luyện và Kiểm định
+> **[CẦN HÌNH: Biểu đồ phân phối cảm xúc (bar chart) của combined dataset — lấy từ cell "combine" trong cả 3 notebook]**
 
-- Trong mỗi epoch, mô hình thực hiện hai pha:
-  1. **Pha Huấn luyện (Train Phase)**: Mô hình học từ tập `train_loader`. Trọng số được cập nhật.
-  2. **Pha Kiểm định (Validation Phase)**: Mô hình được đánh giá trên tập `val_loader`. Trọng số không được cập nhật. Kết quả ở pha này được dùng để theo dõi hiệu suất và ra quyết định (giảm learning rate, dừng sớm, lưu mô hình).
-- Các chỉ số `Loss`, `Accuracy`, `F1-score`, `Recall`, `Precision` được ghi lại cho cả hai tập để theo dõi.
+**Chia dữ liệu:** Stratified split, random_state=42.
 
-### 6.3. Đánh giá trên Tập Thử nghiệm (Test)
+| Tập | Mẫu | Tỉ lệ |
+|---|---|---|
+| Train | 1536 | 80% |
+| Validation | 192 | 10% |
+| Test | 192 | 10% |
 
-- Sau khi quá trình huấn luyện kết thúc, mô hình có hiệu suất tốt nhất trên tập kiểm định được tải lại.
-- Mô hình được đánh giá lần cuối trên tập `test_loader`. Đây là kết quả cuối cùng, phản ánh hiệu suất của mô hình trên dữ liệu hoàn toàn mới.
-- **Classification Report**: Cung cấp một báo cáo chi tiết về `precision`, `recall`, `f1-score` cho từng lớp cảm xúc.
-- **Confusion Matrix (Ma trận nhầm lẫn)**: Trực quan hóa hiệu suất của mô hình. Nó cho thấy mô hình dự đoán đúng bao nhiêu mẫu cho mỗi lớp và thường nhầm lẫn giữa các lớp nào.
+So với DeepEmoNet sử dụng split 90/5/5 (1728/96/96), cách chia này giảm training data nhưng cho test set lớn hơn và đáng tin cậy hơn.
 
-## 7. Kết luận
+---
 
-Dự án đã xây dựng thành công một quy trình hoàn chỉnh để nhận dạng cảm xúc qua giọng nói bằng cách sử dụng phương pháp chuyển đổi sang Mel Spectrogram và học chuyển giao. Việc thử nghiệm với nhiều kiến trúc CNN khác nhau cho phép so sánh và lựa chọn mô hình phù hợp nhất cho bài toán. Các kỹ thuật như phân chia dữ liệu theo nhóm, tăng cường dữ liệu, và các chiến lược huấn luyện nâng cao (learning rate scheduler, early stopping) đều đóng vai trò quan trọng trong việc xây dựng một mô hình mạnh mẽ và có khả năng tổng quát hóa tốt.
+### 4.2 Chi tiết thực nghiệm
+
+| Thành phần | MFCC + SVM | BiLSTM v2 | ResNet34 |
+|---|---|---|---|
+| **Đặc trưng** | MFCC mean+std (40-dim) | Log-mel (128×128) | Log-mel (128×128 × 3ch) |
+| **Chuẩn hóa** | StandardScaler | [−80,0]→[0,1] | [0,1] + ImageNet norm |
+| **Augmentation** | — | SpecAugment | Rotate/Zoom/Brightness + Mixup |
+| **Loss** | — | Weighted CrossEntropy | CrossEntropy (soft) |
+| **Optimizer** | GridSearch (SVM) | Adam + ReduceLROnPlateau | Adam + ExponentialLR |
+| **Epochs** | — | ≤200, stopped @99 | 30 |
+| **Batch size** | — | 64 | 64 |
+| **Pretrained** | ✗ | ✗ | ✓ ImageNet |
+| **Tham số** | ~few K (SVM) | 662,281 | 21.3M |
+
+---
+
+### 4.3 Phương pháp đánh giá
+
+Sử dụng **accuracy** và **F1-score** để đánh giá hiệu suất mô hình. Tất cả kết quả được báo cáo trên **test set** — tập dữ liệu chưa được sử dụng trong bất kỳ quá trình huấn luyện hay chọn hyperparameter nào.
+
+- SVM: F1 **weighted** (phù hợp với class imbalance)
+- BiLSTM, ResNet34: F1 **macro** (trọng số bằng nhau cho mọi lớp)
+
+---
+
+### 4.4 Kết quả
+
+#### Bảng tổng hợp
+
+| Mô hình | Accuracy (Test) | F1 (Test) | Ghi chú |
+|---|---|---|---|
+| MFCC + SVM (baseline) | 56.8% | 0.5636 | Trước GridSearch |
+| MFCC + SVM (tuned) | **66.67%** | **0.6669** (weighted) | C=10, gamma='scale' |
+| Log-Mel + BiLSTM v2 | **63.54%** | **0.6394** (macro) | Stopped @epoch 99 |
+| Log-Mel + ResNet34 | **75.00%** | **0.7503** (macro) | 30 epochs fine-tune |
+
+#### So sánh với DeepEmoNet
+
+| Mô hình | Accuracy | F1 | Tập đo | Nguồn |
+|---|---|---|---|---|
+| SVM (DeepEmoNet) | 51.7% | 0.509 | Validation | Vu, 2025 |
+| LSTM (DeepEmoNet) | 52.8% | 0.497 | Validation | Vu, 2025 |
+| CNN + TL (DeepEmoNet) | 57.3% | 0.528 | Validation | Vu, 2025 |
+| CNN + TL + Aug (DeepEmoNet) | 66.7% | 0.631 | Validation | Vu, 2025 |
+| **SVM (dự án này)** | **66.67%** | **0.6669** | **Test** | — |
+| **BiLSTM v2 (dự án này)** | **63.54%** | **0.6394** | **Test** | — |
+| **ResNet34 (dự án này)** | **75.00%** | **0.7503** | **Test** | — |
+
+> ⚠️ **Lưu ý so sánh:** DeepEmoNet báo cáo trên validation set; dự án này báo cáo trên test set. Validation accuracy thường cao hơn test accuracy do model được lựa chọn dựa trên val loss. Nếu tính cùng điều kiện, kết quả của dự án này có khả năng cao hơn thực tế được trình bày.
+
+---
+
+#### Per-class Performance — MFCC + SVM (Test Set)
+
+| Cảm xúc | Precision | Recall | F1 | Support |
+|---|---|---|---|---|
+| neutral | 0.65 | 0.59 | 0.62 | 22 |
+| calm | 0.65 | 0.89 | **0.76** | 19 |
+| happy | 0.55 | 0.64 | 0.59 | 25 |
+| sad | 0.56 | 0.56 | 0.56 | 25 |
+| angry | 0.71 | 0.68 | 0.69 | 25 |
+| fear | 0.65 | 0.68 | 0.67 | 25 |
+| disgust | 0.75 | 0.60 | 0.67 | 25 |
+| surprise | **0.86** | 0.73 | **0.79** | 26 |
+| **macro avg** | 0.67 | 0.67 | 0.67 | 192 |
+
+> **[CẦN HÌNH: Confusion matrix của SVM — từ cell "conf-matrix" trong notebook mfcc_SVM]**
+
+---
+
+#### Per-class Performance — BiLSTM v2 (Test Set)
+
+> **[CẦN HÌNH / SỐ: Classification report của BiLSTM v2 — chạy lại notebook và thêm cell `classification_report`]**
+
+> **[CẦN HÌNH: Confusion matrix của BiLSTM v2]**
+
+> **[CẦN HÌNH: Training curves của BiLSTM v2 (Loss / Accuracy / LR) — từ cell "plots" trong notebook logmelspec_LSTM]**
+
+---
+
+#### Per-class Performance — ResNet34 (Test Set)
+
+> **[CẦN HÌNH / SỐ: Classification report của ResNet34 — từ cell "class-report" trong notebook logmelspec_CNN_resnet34]**
+
+> **[CẦN HÌNH: Confusion matrix của ResNet34 — từ cell "conf-matrix"]**
+
+> **[CẦN HÌNH: Training curves của ResNet34 (Loss / Accuracy / LR) — đã có tại `result/training_curves_resnet34.png`]**
+
+---
+
+#### Tổng hợp kết quả theo lớp cảm xúc
+
+> **[CẦN HÌNH: Bar chart so sánh F1 per-class của 3 mô hình — vẽ bằng seaborn/matplotlib từ 3 classification report]**
+
+---
+
+## 5. Phân tích
+
+### 5.1 MFCC + SVM
+
+**Điểm mạnh:**
+- Đơn giản, nhanh, không cần GPU
+- Test accuracy (66.67%) vượt xa SVM của DeepEmoNet (51.7% val) nhờ dùng mean+std thay vì chỉ mean
+- Kết quả tốt trên *calm* (F1=0.76) và *surprise* (F1=0.79)
+
+**Điểm yếu:**
+- Train accuracy 99.48% vs Test 66.67% → **overfitting nghiêm trọng** (SVM memorize training data)
+- Mất thông tin thời gian: lấy mean/std xóa bỏ temporal dynamics của giọng nói
+- Khó cải thiện thêm mà không đổi sang đặc trưng tốt hơn
+
+### 5.2 BiLSTM v2
+
+**Điểm mạnh:**
+- Xử lý được chuỗi thời gian (temporal modeling)
+- Attention Pooling cải thiện đáng kể so với last-timestep (không overfitting như LSTM gốc của DeepEmoNet)
+- Chỉ 662K tham số, nhẹ nhàng, không cần pretrained
+
+**Điểm yếu:**
+- Test accuracy (63.54%) thấp hơn SVM → cần nhiều dữ liệu hơn để BiLSTM thể hiện ưu thế
+- Training lâu (99 epochs), không ổn định trong giai đoạn đầu
+
+### 5.3 ResNet34 (Transfer Learning)
+
+**Điểm mạnh:**
+- Kết quả tốt nhất: **75.0% accuracy**, **F1=0.7503**
+- Transfer learning từ ImageNet cho phép học được low-level visual patterns từ spectrogram
+- Mixup + image augmentation giảm overfitting hiệu quả (train 94.5% vs test 75.0%, gap hợp lý)
+- Val ≈ Test (77% vs 75%) → model generalizes tốt
+
+**Điểm yếu:**
+- 21.3M tham số, cần GPU
+- Overfitting nhẹ: train 94.5% >> test 75.0%
+- Log-mel spectrogram ≠ ảnh tự nhiên → ImageNet pretraining không hoàn toàn phù hợp về mặt lý thuyết, dù thực tế hoạt động tốt
+
+---
+
+## 6. Kết luận
+
+Ba mô hình được phát triển cho bài toán SER trên RAVDESS+SAVEE:
+
+1. **MFCC + SVM**: baseline đơn giản nhưng hiệu quả (66.67% test), phù hợp khi không có GPU
+2. **BiLSTM v2**: mô hình sequence learning với attention, kết quả trung bình (63.54% test) nhưng kiến trúc có khả năng mở rộng tốt
+3. **ResNet34 + Transfer Learning**: mô hình tốt nhất (75.00% test), vượt kết quả được báo cáo trong DeepEmoNet trên cùng dataset
+
+Bước tiếp theo để cải thiện:
+- Fine-tune pretrained speech model (wav2vec 2.0, HuBERT) thay vì vision model
+- Kết hợp CNN và LSTM (CNN để trích xuất đặc trưng, LSTM để mô hình chuỗi)
+- Thêm delta/delta-delta MFCC cho pipeline SVM
+- Tăng kích thước dataset (data augmentation âm thanh: pitch shift, time stretch, noise injection)
+
+---
+
+## Tài liệu tham khảo
+
+- Vu, T. (2025). *DeepEmoNet: Building Machine Learning Models for Automatic Emotion Recognition in Human Speeches*. arXiv:2509.00025.
+- Livingstone, S. R., & Russo, F. A. (2018). The Ryerson Audio-Visual Database of Emotional Speech and Song (RAVDESS).
+- Jackson, P., & Haq, S. (2014). Surrey Audio-Visual Expressed Emotion (SAVEE) Database.
+- Park, D. S., et al. (2019). SpecAugment: A Simple Data Augmentation Method for Automatic Speech Recognition. *Interspeech 2019*.
+- Zhang, H., et al. (2018). mixup: Beyond Empirical Risk Minimization.
+- He, K., et al. (2016). Deep Residual Learning for Image Recognition. *CVPR 2016*.
+- McFee, B., et al. (2015). librosa: Audio and music signal analysis in Python. *SciPy 2015*.
+- Hochreiter, S., & Schmidhuber, J. (1997). Long Short-Term Memory. *Neural Computation*.

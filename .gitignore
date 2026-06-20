@@ -160,6 +160,7 @@ mel_images/
 BuildResnet.pth
 BuildDenseNet.pth
 BuildVGG16.pth
+best_cnn_resnet34.pth
 
 
 # Spyder project settings
