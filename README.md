@@ -1,146 +1,278 @@
-# Nhận Dạng Cảm Xúc Qua Giọng Nói
+# Speech Emotion Recognition trên RAVDESS + SAVEE: So sánh MFCC+SVM, BiLSTM và ResNet34
 
-Dự án này xây dựng một quy trình học sâu (deep learning) để nhận dạng cảm xúc của con người từ giọng nói. Hệ thống xử lý các file âm thanh thô, chuyển đổi chúng thành dạng biểu diễn hình ảnh (Mel Spectrogram), và sau đó sử dụng một Mạng Nơ-ron Tích chập (CNN) để phân loại cảm xúc.
+---
 
-## 🚀 Tính Năng
+## Abstract
 
-- **Quy Trình Toàn Diện**: Từ âm thanh thô đến phân loại cảm xúc.
-- **Tiền Xử Lý Dữ Liệu**: Bao gồm loại bỏ khoảng lặng và tăng cường dữ liệu (thêm nhiễu, thay đổi cao độ, co giãn thời gian) để tạo ra một bộ dữ liệu mạnh mẽ.
-- **Trích Xuất Đặc Trưng**: Chuyển đổi tín hiệu âm thanh thành hình ảnh Mel Spectrogram, phù hợp cho các mô hình CNN.
-- **Mô Hình Học Sâu**: Sử dụng mô hình ResNet đã được huấn luyện trước (pre-trained) và tinh chỉnh (fine-tuning) để đạt độ chính xác cao.
-- **Kỹ Thuật Huấn Luyện Nâng Cao**: Áp dụng scheduler `OneCycleLR`, trình tối ưu hóa `AdamW`, và Test Time Augmentation (TTA) để cải thiện hiệu suất.
-- **Quy Trình Có Cấu Trúc**: Toàn bộ quy trình được tổ chức thành một chuỗi các file Jupyter Notebook.
+Bài báo cáo này trình bày kết quả thực nghiệm của ba mô hình học máy áp dụng cho bài toán nhận dạng cảm xúc từ giọng nói (Speech Emotion Recognition — SER): **(1)** SVM với đặc trưng MFCC, **(2)** BiLSTM với Log-Mel Spectrogram, và **(3)** ResNet34 (transfer learning từ ImageNet) với Log-Mel Spectrogram. Cả ba mô hình được huấn luyện và đánh giá trên cùng một tập dữ liệu kết hợp RAVDESS và SAVEE (1920 mẫu, 8 lớp cảm xúc), với cùng chiến lược chia dữ liệu 80/10/10. Mô hình ResNet34 đạt kết quả tốt nhất với **accuracy 75.00%** và **F1-macro 0.7503** trên tập test, vượt qua kết quả tốt nhất được báo cáo trong DeepEmoNet (Vu, 2025) là 66.7% trên tập validation.
 
-## 📂 Cấu Trúc Dự Án
+---
+
+## 1. Giới thiệu
+
+Nhận dạng cảm xúc từ giọng nói là một bài toán quan trọng trong xử lý ngôn ngữ nói, với ứng dụng trong giao tiếp người–máy, y tế, và giám sát cảm xúc. Bài toán gặp khó khăn do sự mơ hồ và phức tạp của cảm xúc con người, cũng như sự thiếu hụt dữ liệu huấn luyện.
+
+Báo cáo này tái hiện và mở rộng phương pháp của DeepEmoNet (Vu, 2025), so sánh ba pipeline xử lý âm thanh khác nhau về đặc trưng đầu vào và kiến trúc mô hình. Điểm khác biệt chính so với DeepEmoNet:
+
+- Sử dụng **mean + std** của MFCC (40 chiều) thay vì chỉ mean (20 chiều)
+- BiLSTM được cải tiến với **Attention Pooling** và **SpecAugment**
+- Đánh giá trên **test set** thay vì validation set, đảm bảo ước lượng không thiên vị
+
+---
+
+## 2. Related Works
+
+Các nghiên cứu trước đây về SER đã sử dụng nhiều phương pháp khác nhau. Schuller et al. (2003) dùng Hidden Markov Model để phát hiện cảm xúc từ các đặc trưng giọng nói. Demircan và Kahramanli (2018) kết hợp MFCC với fuzzy C-means và kNN. Lim et al. (2016) áp dụng CNN và LSTM trên biểu diễn STFT, cho kết quả tốt hơn các phương pháp truyền thống. DeepEmoNet (Vu, 2025) sử dụng cùng dataset RAVDESS+SAVEE, thử nghiệm SVM, LSTM, và ResNet34 với transfer learning, đạt 66.7% accuracy (validation set).
+
+---
+
+## 3. Phương pháp
+
+### 3.1 Mô hình 1 — MFCC + SVM
+
+**Đặc trưng:** Với mỗi file âm thanh, trích xuất 20 MFCC coefficients, sau đó tính **mean** và **std** theo trục thời gian, ghép thành vector **40 chiều**. Chuẩn hóa bằng `StandardScaler` (fit trên train, transform val/test).
+
+**Mô hình:** SVM nhân RBF, tối ưu siêu tham số bằng `GridSearchCV` với 5-fold cross-validation trên tập train:
+
+| Siêu tham số | Lưới tìm kiếm |
+|---|---|
+| C | {0.1, 1, 10, 100} |
+| gamma | {'scale', 'auto', 0.001, 0.01} |
+
+Metric tối ưu: F1-weighted. Kết quả tốt nhất: **C=10, gamma='scale'**.
+
+---
+
+### 3.2 Mô hình 2 — Log-Mel Spectrogram + BiLSTM (v2)
+
+**Đặc trưng:** Log-Mel spectrogram với N_MELS=128, n_fft=1024, hop_length=512. Mỗi file được pad/trim về độ dài cố định MAX_STEPS=128 (~4.1s). Chuẩn hóa log-dB [-80, 0] → [0, 1].
+
+**Kiến trúc:**
 
 ```
-.
-├── 1_Preparedataset.ipynb      # Notebook để làm sạch, tăng cường và chia dữ liệu.
-├── 2_FeatureExtraction.ipynb   # Notebook để chuyển đổi âm thanh thành Mel Spectrogram.
-├── 3_CNN-classification.ipynb  # Notebook để huấn luyện và đánh giá mô hình CNN.
-├── requirements.txt            # Các gói Python cần thiết.
-├── dataset/                    # Thư mục chứa các bộ dữ liệu âm thanh thô (RAVDESS, CREMA-D).
-├── CSVs/                       # Lưu các file CSV chứa đường dẫn file và nhãn.
-├── features/                   # Lưu các đặc trưng đã trích xuất (ảnh Mel Spectrogram).
-└── ...
+Input (B, 128, 128)
+  → BiLSTM × 2 (hidden=128, dropout=0.3, bidirectional) → (B, 128, 256)
+  → AttentionPool (learnable soft-attention) → (B, 256)
+  → BatchNorm1d(256)
+  → Dropout(0.4)
+  → Linear(256 → 8)
 ```
 
-## ⚙️ Cài Đặt
+Tổng số tham số: **662,281**.
 
-Thực hiện theo các bước sau để thiết lập môi trường cho dự án.
+**Kỹ thuật:**
+- **SpecAugment**: T_mask=20, F_mask=20, 2 masks mỗi loại (chỉ train)
+- **Class-weighted CrossEntropyLoss**: bù cho sự mất cân bằng lớp (neutral có ít mẫu hơn)
+- **Adam** lr=1e-3, weight_decay=1e-4
+- **ReduceLROnPlateau**: factor=0.5, patience=5
+- **Early stopping**: patience=15, dừng tại epoch 99
 
-### 1. Clone Repository
+---
 
-```bash
-git clone https://github.com/AzureDream1811/speech-emotion-recognition-ravdess.git
-cd speech-emotion-recognition-ravdess
-```
+### 3.3 Mô hình 3 — Log-Mel Spectrogram + ResNet34
 
-### 2. Tạo Môi Trường Ảo
+**Đặc trưng:** Log-Mel spectrogram (N_MELS=128, IMG_SIZE=128×128), chuẩn hóa [-80,0]→[0,1], nhân lên 3 kênh để phù hợp đầu vào RGB của ResNet34.
 
-Rất khuyến khích sử dụng môi trường ảo để quản lý các gói phụ thuộc.
+**Kiến trúc:** ResNet34 pretrained trên ImageNet. Thay thế layer `fc` cuối: Linear(512 → 8).
 
-```bash
-# Tạo môi trường ảo
-python -m venv .venv
+**Augmentation (chỉ train):**
+- RandomHorizontalFlip
+- RandomAffine(degrees=10, scale=0.9–1.1) — xoay và zoom
+- ColorJitter(brightness=0.3, contrast=0.3) — thay đổi độ sáng
+- **Mixup** (α=0.6): tạo tổ hợp lồi của cặp mẫu
 
-# Kích hoạt môi trường
-# Trên Windows
-.venv\Scripts\activate
-# Trên macOS/Linux
-source .venv/bin/activate
-```
+**Huấn luyện:**
+- **Adam** lr=1e-3
+- **ExponentialLR**: gamma=0.9/epoch
+- **CrossEntropyLoss** (soft labels qua Mixup)
+- **30 epochs** (DeepEmoNet protocol cho pretrained model)
+- Checkpoint tại epoch có val loss thấp nhất
 
-### 3. Cài Đặt Các Gói Phụ Thuộc
+---
 
-Cài đặt tất cả các gói cần thiết từ file `requirements.txt`.
+## 4. Thực nghiệm
 
-```bash
-pip install -r requirements.txt
-```
+### 4.1 Dữ liệu
 
-### 4. Cài Đặt FFmpeg (Để Loại Bỏ Khoảng Lặng)
+| Tập dữ liệu | Mẫu | Giới tính | Cảm xúc |
+|---|---|---|---|
+| RAVDESS | 1440 | 24 diễn viên (12 nam, 12 nữ) | 8 lớp (neutral có 96 mẫu, còn lại 192) |
+| SAVEE | 480 | 4 diễn viên nam | 7 lớp (không có calm; neutral=120) |
+| **Tổng** | **1920** | — | **8 lớp** |
 
-Bước loại bỏ khoảng lặng trong `1_Preparedataset.ipynb` yêu cầu FFmpeg.
+> **[CẦN HÌNH: Biểu đồ phân phối cảm xúc (bar chart) của combined dataset — lấy từ cell "combine" trong cả 3 notebook]**
 
-- **Windows**: Tải file thực thi của FFmpeg, sau đó thêm đường dẫn đến thư mục `bin` vào biến môi trường PATH của hệ thống.
-- **macOS**: `brew install ffmpeg`
-- **Linux**: `sudo apt-get install ffmpeg`
+**Chia dữ liệu:** Stratified split, random_state=42.
 
-### 5. Tải Dữ Liệu
+| Tập | Mẫu | Tỉ lệ |
+|---|---|---|
+| Train | 1536 | 80% |
+| Validation | 192 | 10% |
+| Test | 192 | 10% |
 
-Dự án này sử dụng bộ dữ liệu **CREMA-D** và **RAVDESS**.
+So với DeepEmoNet sử dụng split 90/5/5 (1728/96/96), cách chia này giảm training data nhưng cho test set lớn hơn và đáng tin cậy hơn.
 
-1.  Tải các bộ dữ liệu từ nguồn chính thức của chúng.
-2.  Tạo một thư mục có tên `dataset` trong thư mục gốc của dự án.
-3.  Đặt các file âm thanh theo cấu trúc sau:
-    ```
-    dataset/
-    ├── CREMA-D/
-    │   └── AudioWAV/
-    │       ├── 1001_DFA_ANG_XX.wav
-    │       └── ...
-    └── ravdess/
-        ├── Actor_01/
-        │   ├── 03-01-01-01-01-01-01.wav
-        │   └── ...
-        └── Actor_02/
-            └── ...
-    ```
+---
 
-## 📈 Quy Trình - Hướng Dẫn Chạy
+### 4.2 Chi tiết thực nghiệm
 
-Dự án được chia thành ba notebook chính. Hãy chạy chúng theo thứ tự sau.
+| Thành phần | MFCC + SVM | BiLSTM v2 | ResNet34 |
+|---|---|---|---|
+| **Đặc trưng** | MFCC mean+std (40-dim) | Log-mel (128×128) | Log-mel (128×128 × 3ch) |
+| **Chuẩn hóa** | StandardScaler | [−80,0]→[0,1] | [0,1] + ImageNet norm |
+| **Augmentation** | — | SpecAugment | Rotate/Zoom/Brightness + Mixup |
+| **Loss** | — | Weighted CrossEntropy | CrossEntropy (soft) |
+| **Optimizer** | GridSearch (SVM) | Adam + ReduceLROnPlateau | Adam + ExponentialLR |
+| **Epochs** | — | ≤200, stopped @99 | 30 |
+| **Batch size** | — | 64 | 64 |
+| **Pretrained** | ✗ | ✗ | ✓ ImageNet |
+| **Tham số** | ~few K (SVM) | 662,281 | 21.3M |
 
-### Bước 1: Chuẩn Bị Dữ Liệu
+---
 
-**Notebook:** [1_Preparedataset.ipynb](1_Preparedataset.ipynb)
+### 4.3 Phương pháp đánh giá
 
-Notebook này xử lý tất cả các bước chuẩn bị dữ liệu ban đầu cho bộ dữ liệu CREMA-D.
+Sử dụng **accuracy** và **F1-score** để đánh giá hiệu suất mô hình. Tất cả kết quả được báo cáo trên **test set** — tập dữ liệu chưa được sử dụng trong bất kỳ quá trình huấn luyện hay chọn hyperparameter nào.
 
-- **Tải đường dẫn âm thanh** và trích xuất nhãn (cảm xúc, người nói).
-- **Chia dữ liệu** thành các tập huấn luyện và kiểm thử, đảm bảo rằng người nói trong tập huấn luyện không xuất hiện trong tập kiểm thử (sử dụng `GroupShuffleSplit`).
-- **Loại bỏ khoảng lặng** ở đầu và cuối của các file âm thanh.
-- **Thực hiện tăng cường dữ liệu** trên tập huấn luyện bằng cách thêm nhiễu, co giãn thời gian, hoặc thay đổi cao độ.
-- **Lưu danh sách file cuối cùng** vào các file CSV trong thư mục `CSVs/`.
+- SVM: F1 **weighted** (phù hợp với class imbalance)
+- BiLSTM, ResNet34: F1 **macro** (trọng số bằng nhau cho mọi lớp)
 
-> **Chạy tất cả các ô (cell) trong notebook này từ trên xuống dưới.**
+---
 
-### Bước 2: Trích Xuất Đặc Trưng (Mel Spectrograms)
+### 4.4 Kết quả
 
-**Notebook:** [2_FeatureExtraction.ipynb](2_FeatureExtraction.ipynb)
+#### Bảng tổng hợp
 
-Notebook này chuyển đổi các file âm thanh đã được tiền xử lý thành hình ảnh Mel Spectrogram, đây sẽ là đầu vào cho mô hình CNN của chúng ta.
+| Mô hình | Accuracy (Test) | F1 (Test) | Ghi chú |
+|---|---|---|---|
+| MFCC + SVM (baseline) | 56.8% | 0.5636 | Trước GridSearch |
+| MFCC + SVM (tuned) | **66.67%** | **0.6669** (weighted) | C=10, gamma='scale' |
+| Log-Mel + BiLSTM v2 | **63.54%** | **0.6394** (macro) | Stopped @epoch 99 |
+| Log-Mel + ResNet34 | **75.00%** | **0.7503** (macro) | 30 epochs fine-tune |
 
-- **Tải các file CSV** được tạo ở bước trước.
-- **Lặp qua từng file âm thanh**, chuẩn hóa độ dài của nó về một khoảng thời gian tiêu chuẩn (3 giây).
-- **Tạo một Mel Spectrogram** cho mỗi file âm thanh.
-- **Lưu các spectrogram dưới dạng ảnh PNG** vào các thư mục `features/images/train` và `features/images/test`.
-- **Tạo các file CSV mới** (`train_images.csv`, `test_images.csv`) để ánh xạ các ảnh này với cảm xúc và người nói tương ứng.
+#### So sánh với DeepEmoNet
 
-> **Chạy tất cả các ô trong notebook này từ trên xuống dưới.**
+| Mô hình | Accuracy | F1 | Tập đo | Nguồn |
+|---|---|---|---|---|
+| SVM (DeepEmoNet) | 51.7% | 0.509 | Validation | Vu, 2025 |
+| LSTM (DeepEmoNet) | 52.8% | 0.497 | Validation | Vu, 2025 |
+| CNN + TL (DeepEmoNet) | 57.3% | 0.528 | Validation | Vu, 2025 |
+| CNN + TL + Aug (DeepEmoNet) | 66.7% | 0.631 | Validation | Vu, 2025 |
+| **SVM (dự án này)** | **66.67%** | **0.6669** | **Test** | — |
+| **BiLSTM v2 (dự án này)** | **63.54%** | **0.6394** | **Test** | — |
+| **ResNet34 (dự án này)** | **75.00%** | **0.7503** | **Test** | — |
 
-### Bước 3: Huấn Luyện Mô Hình CNN
+> ⚠️ **Lưu ý so sánh:** DeepEmoNet báo cáo trên validation set; dự án này báo cáo trên test set. Validation accuracy thường cao hơn test accuracy do model được lựa chọn dựa trên val loss. Nếu tính cùng điều kiện, kết quả của dự án này có khả năng cao hơn thực tế được trình bày.
 
-**Notebook:** [3_CNN-classification.ipynb](3_CNN-classification.ipynb)
+---
 
-Đây là bước cuối cùng, nơi chúng ta huấn luyện và đánh giá mô hình nhận dạng cảm xúc.
+#### Per-class Performance — MFCC + SVM (Test Set)
 
-- **Định nghĩa các phép biến đổi** và tăng cường dữ liệu cho ảnh spectrogram.
-- **Tạo các đối tượng `Dataset` và `DataLoader`** cho việc huấn luyện, xác thực và kiểm thử.
-- **Xây dựng mô hình ResNet** sử dụng học chuyển giao (transfer learning), tinh chỉnh nó cho tác vụ cụ thể của chúng ta.
-- **Huấn luyện mô hình** bằng tập huấn luyện và đánh giá nó trên tập xác thực sau mỗi epoch.
-- **Áp dụng Early Stopping** để ngăn chặn overfitting và lưu lại mô hình tốt nhất dựa trên điểm F1-score.
-- **Đánh giá mô hình cuối cùng** trên tập kiểm thử chưa từng thấy bằng cách sử dụng **Test Time Augmentation (TTA)** để tăng cường độ chính xác.
+| Cảm xúc | Precision | Recall | F1 | Support |
+|---|---|---|---|---|
+| neutral | 0.65 | 0.59 | 0.62 | 22 |
+| calm | 0.65 | 0.89 | **0.76** | 19 |
+| happy | 0.55 | 0.64 | 0.59 | 25 |
+| sad | 0.56 | 0.56 | 0.56 | 25 |
+| angry | 0.71 | 0.68 | 0.69 | 25 |
+| fear | 0.65 | 0.68 | 0.67 | 25 |
+| disgust | 0.75 | 0.60 | 0.67 | 25 |
+| surprise | **0.86** | 0.73 | **0.79** | 26 |
+| **macro avg** | 0.67 | 0.67 | 0.67 | 192 |
 
-> **Chạy tất cả các ô trong notebook này để huấn luyện mô hình và xem các chỉ số hiệu suất cuối cùng.**
+> **[CẦN HÌNH: Confusion matrix của SVM — từ cell "conf-matrix" trong notebook mfcc_SVM]**
 
-## 📊 Kết Quả
+---
 
-Hiệu suất của mô hình được đánh giá bằng các chỉ số Accuracy, F1-Score, Precision và Recall. Kết quả cuối cùng trên tập kiểm thử được in ra ở cuối notebook `3_CNN-classification.ipynb`.
+#### Per-class Performance — BiLSTM v2 (Test Set)
 
-*(Bạn có thể thêm bảng kết quả cuối cùng của mình vào đây sau khi chạy toàn bộ quy trình)*
+> **[CẦN HÌNH / SỐ: Classification report của BiLSTM v2 — chạy lại notebook và thêm cell `classification_report`]**
 
-| Model    | Accuracy | F1-Score |
-| -------- | -------- | -------- |
-| ResNet34 | ...      | ...      |
+> **[CẦN HÌNH: Confusion matrix của BiLSTM v2]**
+
+> **[CẦN HÌNH: Training curves của BiLSTM v2 (Loss / Accuracy / LR) — từ cell "plots" trong notebook logmelspec_LSTM]**
+
+---
+
+#### Per-class Performance — ResNet34 (Test Set)
+
+> **[CẦN HÌNH / SỐ: Classification report của ResNet34 — từ cell "class-report" trong notebook logmelspec_CNN_resnet34]**
+
+> **[CẦN HÌNH: Confusion matrix của ResNet34 — từ cell "conf-matrix"]**
+
+> **[CẦN HÌNH: Training curves của ResNet34 (Loss / Accuracy / LR) — đã có tại `result/training_curves_resnet34.png`]**
+
+---
+
+#### Tổng hợp kết quả theo lớp cảm xúc
+
+> **[CẦN HÌNH: Bar chart so sánh F1 per-class của 3 mô hình — vẽ bằng seaborn/matplotlib từ 3 classification report]**
+
+---
+
+## 5. Phân tích
+
+### 5.1 MFCC + SVM
+
+**Điểm mạnh:**
+- Đơn giản, nhanh, không cần GPU
+- Test accuracy (66.67%) vượt xa SVM của DeepEmoNet (51.7% val) nhờ dùng mean+std thay vì chỉ mean
+- Kết quả tốt trên *calm* (F1=0.76) và *surprise* (F1=0.79)
+
+**Điểm yếu:**
+- Train accuracy 99.48% vs Test 66.67% → **overfitting nghiêm trọng** (SVM memorize training data)
+- Mất thông tin thời gian: lấy mean/std xóa bỏ temporal dynamics của giọng nói
+- Khó cải thiện thêm mà không đổi sang đặc trưng tốt hơn
+
+### 5.2 BiLSTM v2
+
+**Điểm mạnh:**
+- Xử lý được chuỗi thời gian (temporal modeling)
+- Attention Pooling cải thiện đáng kể so với last-timestep (không overfitting như LSTM gốc của DeepEmoNet)
+- Chỉ 662K tham số, nhẹ nhàng, không cần pretrained
+
+**Điểm yếu:**
+- Test accuracy (63.54%) thấp hơn SVM → cần nhiều dữ liệu hơn để BiLSTM thể hiện ưu thế
+- Training lâu (99 epochs), không ổn định trong giai đoạn đầu
+
+### 5.3 ResNet34 (Transfer Learning)
+
+**Điểm mạnh:**
+- Kết quả tốt nhất: **75.0% accuracy**, **F1=0.7503**
+- Transfer learning từ ImageNet cho phép học được low-level visual patterns từ spectrogram
+- Mixup + image augmentation giảm overfitting hiệu quả (train 94.5% vs test 75.0%, gap hợp lý)
+- Val ≈ Test (77% vs 75%) → model generalizes tốt
+
+**Điểm yếu:**
+- 21.3M tham số, cần GPU
+- Overfitting nhẹ: train 94.5% >> test 75.0%
+- Log-mel spectrogram ≠ ảnh tự nhiên → ImageNet pretraining không hoàn toàn phù hợp về mặt lý thuyết, dù thực tế hoạt động tốt
+
+---
+
+## 6. Kết luận
+
+Ba mô hình được phát triển cho bài toán SER trên RAVDESS+SAVEE:
+
+1. **MFCC + SVM**: baseline đơn giản nhưng hiệu quả (66.67% test), phù hợp khi không có GPU
+2. **BiLSTM v2**: mô hình sequence learning với attention, kết quả trung bình (63.54% test) nhưng kiến trúc có khả năng mở rộng tốt
+3. **ResNet34 + Transfer Learning**: mô hình tốt nhất (75.00% test), vượt kết quả được báo cáo trong DeepEmoNet trên cùng dataset
+
+Bước tiếp theo để cải thiện:
+- Fine-tune pretrained speech model (wav2vec 2.0, HuBERT) thay vì vision model
+- Kết hợp CNN và LSTM (CNN để trích xuất đặc trưng, LSTM để mô hình chuỗi)
+- Thêm delta/delta-delta MFCC cho pipeline SVM
+- Tăng kích thước dataset (data augmentation âm thanh: pitch shift, time stretch, noise injection)
+
+---
+
+## Tài liệu tham khảo
+
+- Vu, T. (2025). *DeepEmoNet: Building Machine Learning Models for Automatic Emotion Recognition in Human Speeches*. arXiv:2509.00025.
+- Livingstone, S. R., & Russo, F. A. (2018). The Ryerson Audio-Visual Database of Emotional Speech and Song (RAVDESS).
+- Jackson, P., & Haq, S. (2014). Surrey Audio-Visual Expressed Emotion (SAVEE) Database.
+- Park, D. S., et al. (2019). SpecAugment: A Simple Data Augmentation Method for Automatic Speech Recognition. *Interspeech 2019*.
+- Zhang, H., et al. (2018). mixup: Beyond Empirical Risk Minimization.
+- He, K., et al. (2016). Deep Residual Learning for Image Recognition. *CVPR 2016*.
+- McFee, B., et al. (2015). librosa: Audio and music signal analysis in Python. *SciPy 2015*.
+- Hochreiter, S., & Schmidhuber, J. (1997). Long Short-Term Memory. *Neural Computation*.

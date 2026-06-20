@@ -148,16 +148,20 @@ venv.bak/
 __pycache__/
 result/
 spectrograms/
-dataset/
+data/
 features/
 CSVs/
-*_augmented/
-*_silenced/
-best_model.pth
-build_ResNet.pth
-build_DenseNet.pth
-build_EfficientNet.pth
-build_VGG.pth
+plots/
+checkpoints/
+mel_images/
+.idea/
+
+# Model checkpoints
+BuildResnet.pth
+BuildDenseNet.pth
+BuildVGG16.pth
+best_cnn_resnet34.pth
+
 
 # Spyder project settings
 .spyderproject
