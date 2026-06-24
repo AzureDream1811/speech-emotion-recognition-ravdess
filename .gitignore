@@ -155,6 +155,7 @@ plots/
 checkpoints/
 mel_images/
 .idea/
+results/
 
 # Model checkpoints
 BuildResnet.pth
