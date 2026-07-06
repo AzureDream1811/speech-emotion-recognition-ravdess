@@ -1,9 +1,9 @@
 --index-url https://download.pytorch.org/whl/cu126
 --extra-index-url https://pypi.org/simple
 
-torch==2.11.0
-torchvision==0.26.0
-torchaudio==2.11.0
+torch==2.6.0
+torchvision==0.21.0
+torchaudio==2.6.0
 
 ipywidgets>=7.0.0
 tqdm
@@ -24,5 +24,4 @@ pillow
 joblib
 prettytable
 PyWavelets
-soundfile
 fastai

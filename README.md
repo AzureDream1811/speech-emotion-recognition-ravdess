@@ -73,7 +73,7 @@ Tổng số tham số: **662,281**.
 
 **Đặc trưng:** Log-Mel spectrogram (N_MELS=128, IMG_SIZE=128×128), chuẩn hóa [-80,0]→[0,1], nhân lên 3 kênh để phù hợp đầu vào RGB của ResNet34.
 
-**Kiến trúc:** ResNet34 pretrained trên ImageNet. Thay thế layer `fc` cuối: Linear(512 → 8).
+**Kiến trúc:** ResNet34 pretrained trên ImageNet. Thay thế layer `fc` cuối: Linear(512 → 8). Kết quả cuối cùng lấy từ notebook **`logmelspec_CNN_resnet34` v3** (v1/v2 chỉ là bản thử nghiệm trung gian, không dùng cho số liệu báo cáo).
 
 **Augmentation (chỉ train):**
 - RandomHorizontalFlip
@@ -103,6 +103,8 @@ Tổng số tham số: **662,281**.
 > **[CẦN HÌNH: Biểu đồ phân phối cảm xúc (bar chart) của combined dataset — lấy từ cell "combine" trong cả 3 notebook]**
 
 **Chia dữ liệu:** Stratified split, random_state=42.
+
+> ⚠️ **Cảnh báo speaker leakage:** split thực hiện ngẫu nhiên theo *file*, **không phải speaker-independent**. Cùng một diễn viên xuất hiện ở cả train, val và test → mô hình có thể học đặc trưng giọng người nói thay vì cảm xúc, làm accuracy bị thổi phồng. SER chuẩn cần chia theo diễn viên (leave-speakers-out). Đây là hạn chế lớn nhất (xem mục 5.4).
 
 | Tập | Mẫu | Tỉ lệ |
 |---|---|---|
@@ -248,6 +250,17 @@ Sử dụng **accuracy** và **F1-score** để đánh giá hiệu suất mô h�
 - Overfitting nhẹ: train 94.5% >> test 75.0%
 - Log-mel spectrogram ≠ ảnh tự nhiên → ImageNet pretraining không hoàn toàn phù hợp về mặt lý thuyết, dù thực tế hoạt động tốt
 
+### 5.4 Hạn chế nghiên cứu
+
+Các kết quả trên cần được diễn giải thận trọng vì những hạn chế sau:
+
+- **Speaker leakage (nghiêm trọng nhất):** dữ liệu chia ngẫu nhiên theo file, cùng diễn viên nằm ở cả train và test. Vì vậy **accuracy 75%** nhiều khả năng bị thổi phồng; đánh giá SER đúng chuẩn phải dùng **speaker-independent split** (leave-speakers-out).
+- **So sánh DeepEmoNet khập khiễng:** DeepEmoNet đo trên *validation* với split 90/5/5, dự án này đo trên *test* với split 80/10/10. Câu "vượt DeepEmoNet" **không vững về mặt khoa học**, chỉ mang tính tham khảo.
+- **Test set nhỏ (192 mẫu):** chênh lệch 63.54% (BiLSTM) vs 75.00% (ResNet34) nằm trong biên sai số lớn. Chưa có khoảng tin cậy (CI), độ lệch chuẩn qua nhiều seed, hay k-fold.
+- **Tái lập chưa đầy đủ:** đã cố định `random_state` cho split, nhưng **chưa set seed cho torch/numpy/cuda** → kết quả deep learning khó tái lập chính xác.
+- **README chưa hoàn chỉnh:** còn nhiều `[CẦN HÌNH]`, thiếu confusion matrix và classification report đầy đủ cho BiLSTM và ResNet34.
+- **Phiên bản notebook:** có 3 version notebook CNN (v1/v2/v3); số liệu cuối lấy từ **v3**, còn lại chỉ là bản thử nghiệm.
+
 ---
 
 ## 6. Kết luận
@@ -256,7 +269,7 @@ Ba mô hình được phát triển cho bài toán SER trên RAVDESS+SAVEE:
 
 1. **MFCC + SVM**: baseline đơn giản nhưng hiệu quả (66.67% test), phù hợp khi không có GPU
 2. **BiLSTM v2**: mô hình sequence learning với attention, kết quả trung bình (63.54% test) nhưng kiến trúc có khả năng mở rộng tốt
-3. **ResNet34 + Transfer Learning**: mô hình tốt nhất (75.00% test), vượt kết quả được báo cáo trong DeepEmoNet trên cùng dataset
+3. **ResNet34 + Transfer Learning**: mô hình tốt nhất (75.00% test); tuy nhiên con số này chưa so sánh công bằng với DeepEmoNet và bị ảnh hưởng bởi speaker leakage (xem mục 5.4)
 
 Bước tiếp theo để cải thiện:
 - Fine-tune pretrained speech model (wav2vec 2.0, HuBERT) thay vì vision model

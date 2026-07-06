@@ -156,6 +156,7 @@ checkpoints/
 mel_images/
 .idea/
 results/
+.junie/
 
 # Model checkpoints
 BuildResnet.pth
