@@ -1,10 +1,10 @@
-# Speech Emotion Recognition trên RAVDESS + SAVEE: So sánh MFCC+SVM, BiLSTM và ResNet34
+# Speech Emotion Recognition trên RAVDESS + SAVEE: So sánh MFCC+SVM, ResNet34 và DenseNet121
 
 ---
 
 ## Abstract
 
-Bài báo cáo này trình bày kết quả thực nghiệm của ba mô hình học máy áp dụng cho bài toán nhận dạng cảm xúc từ giọng nói (Speech Emotion Recognition — SER): **(1)** SVM với đặc trưng MFCC, **(2)** BiLSTM với Log-Mel Spectrogram, và **(3)** ResNet34 (transfer learning từ ImageNet) với Log-Mel Spectrogram. Cả ba mô hình được huấn luyện và đánh giá trên cùng một tập dữ liệu kết hợp RAVDESS và SAVEE (1920 mẫu, 8 lớp cảm xúc), với cùng chiến lược chia dữ liệu 80/10/10. Mô hình ResNet34 đạt kết quả tốt nhất với **accuracy 75.00%** và **F1-macro 0.7503** trên tập test, vượt qua kết quả tốt nhất được báo cáo trong DeepEmoNet (Vu, 2025) là 66.7% trên tập validation.
+Bài báo cáo này trình bày kết quả thực nghiệm của ba mô hình học máy áp dụng cho bài toán nhận dạng cảm xúc từ giọng nói (Speech Emotion Recognition — SER): **(1)** SVM với đặc trưng MFCC, **(2)** ResNet34 (transfer learning từ ImageNet) với Log-Mel Spectrogram, và **(3)** DenseNet121 (transfer learning từ ImageNet) với Log-Mel Spectrogram. Cả ba mô hình được huấn luyện và đánh giá trên cùng một tập dữ liệu kết hợp RAVDESS và SAVEE (1920 mẫu, 8 lớp cảm xúc), với cùng chiến lược chia dữ liệu 80/10/10, seed cố định (`SEED=42`). Mô hình ResNet34 đạt kết quả tốt nhất với **accuracy 76.04%** và **F1-macro 0.7588** trên tập test.
 
 ---
 
@@ -15,14 +15,14 @@ Nhận dạng cảm xúc từ giọng nói là một bài toán quan trọng tro
 Báo cáo này tái hiện và mở rộng phương pháp của DeepEmoNet (Vu, 2025), so sánh ba pipeline xử lý âm thanh khác nhau về đặc trưng đầu vào và kiến trúc mô hình. Điểm khác biệt chính so với DeepEmoNet:
 
 - Sử dụng **mean + std** của MFCC (40 chiều) thay vì chỉ mean (20 chiều)
-- BiLSTM được cải tiến với **Attention Pooling** và **SpecAugment**
+- So sánh hai kiến trúc CNN: **ResNet34** và **DenseNet121** với transfer learning
 - Đánh giá trên **test set** thay vì validation set, đảm bảo ước lượng không thiên vị
 
 ---
 
 ## 2. Related Works
 
-Các nghiên cứu trước đây về SER đã sử dụng nhiều phương pháp khác nhau. Schuller et al. (2003) dùng Hidden Markov Model để phát hiện cảm xúc từ các đặc trưng giọng nói. Demircan và Kahramanli (2018) kết hợp MFCC với fuzzy C-means và kNN. Lim et al. (2016) áp dụng CNN và LSTM trên biểu diễn STFT, cho kết quả tốt hơn các phương pháp truyền thống. DeepEmoNet (Vu, 2025) sử dụng cùng dataset RAVDESS+SAVEE, thử nghiệm SVM, LSTM, và ResNet34 với transfer learning, đạt 66.7% accuracy (validation set).
+DeepEmoNet (Vu, 2025) sử dụng cùng dataset RAVDESS+SAVEE, thử nghiệm SVM, LSTM, và ResNet34 với transfer learning, đạt 66.7% accuracy (validation set). Đây là công trình duy nhất được báo cáo này trực tiếp tái hiện và mở rộng (xem mục 1).
 
 ---
 
@@ -41,52 +41,48 @@ Các nghiên cứu trước đây về SER đã sử dụng nhiều phương ph�
 
 Metric tối ưu: F1-weighted. Kết quả tốt nhất: **C=10, gamma='scale'**.
 
----
-
-### 3.2 Mô hình 2 — Log-Mel Spectrogram + BiLSTM (v2)
-
-**Đặc trưng:** Log-Mel spectrogram với N_MELS=128, n_fft=1024, hop_length=512. Mỗi file được pad/trim về độ dài cố định MAX_STEPS=128 (~4.1s). Chuẩn hóa log-dB [-80, 0] → [0, 1].
-
-**Kiến trúc:**
-
-```
-Input (B, 128, 128)
-  → BiLSTM × 2 (hidden=128, dropout=0.3, bidirectional) → (B, 128, 256)
-  → AttentionPool (learnable soft-attention) → (B, 256)
-  → BatchNorm1d(256)
-  → Dropout(0.4)
-  → Linear(256 → 8)
-```
-
-Tổng số tham số: **662,281**.
-
-**Kỹ thuật:**
-- **SpecAugment**: T_mask=20, F_mask=20, 2 masks mỗi loại (chỉ train)
-- **Class-weighted CrossEntropyLoss**: bù cho sự mất cân bằng lớp (neutral có ít mẫu hơn)
-- **Adam** lr=1e-3, weight_decay=1e-4
-- **ReduceLROnPlateau**: factor=0.5, patience=5
-- **Early stopping**: patience=15, dừng tại epoch 99
+**Dữ liệu:** RAVDESS + SAVEE (1920 mẫu), chia 80/10/10.
 
 ---
 
-### 3.3 Mô hình 3 — Log-Mel Spectrogram + ResNet34
+### 3.2 Mô hình 2 — Log-Mel Spectrogram + ResNet34
 
-**Đặc trưng:** Log-Mel spectrogram (N_MELS=128, IMG_SIZE=128×128), chuẩn hóa [-80,0]→[0,1], nhân lên 3 kênh để phù hợp đầu vào RGB của ResNet34.
+**Đặc trưng:** Log-Mel spectrogram (N_MELS=128, IMG_SIZE=128×128), chuẩn hóa [-80,0]→[0,1], sau đó Normalize theo mean/std tính trực tiếp trên tập train (không dùng ImageNet stats), nhân lên 3 kênh để phù hợp đầu vào RGB của ResNet34.
 
-**Kiến trúc:** ResNet34 pretrained trên ImageNet. Thay thế layer `fc` cuối: Linear(512 → 8). Kết quả cuối cùng lấy từ notebook **`logmelspec_CNN_resnet34` v3** (v1/v2 chỉ là bản thử nghiệm trung gian, không dùng cho số liệu báo cáo).
+**Kiến trúc:** ResNet34 pretrained trên ImageNet. Thay thế layer `fc` cuối:
 
-**Augmentation (chỉ train):**
-- RandomHorizontalFlip
-- RandomAffine(degrees=10, scale=0.9–1.1) — xoay và zoom
-- ColorJitter(brightness=0.3, contrast=0.3) — thay đổi độ sáng
-- **Mixup** (α=0.6): tạo tổ hợp lồi của cặp mẫu
+```
+Dropout(p=0.5) → Linear(512 → 8)
+```
+
+Tổng số tham số: **~21.3M**.
+
+**Augmentation:** Không dùng (không augment ảnh, không Mixup).
 
 **Huấn luyện:**
 - **Adam** lr=1e-3
-- **ExponentialLR**: gamma=0.9/epoch
-- **CrossEntropyLoss** (soft labels qua Mixup)
-- **30 epochs** (DeepEmoNet protocol cho pretrained model)
+- **CosineAnnealingLR**
+- **CrossEntropyLoss** (hard labels)
+- **30 epochs**
 - Checkpoint tại epoch có val loss thấp nhất
+
+**Dữ liệu:** RAVDESS + SAVEE (1920 mẫu), chia 80/10/10.
+
+---
+
+### 3.3 Mô hình 3 — Log-Mel Spectrogram + DenseNet121
+
+**Đặc trưng:** Giống ResNet34 — Log-Mel spectrogram (N_MELS=128, IMG_SIZE=128×128), chuẩn hóa [-80,0]→[0,1] rồi Normalize theo mean/std tính trên tập train, nhân lên 3 kênh.
+
+**Kiến trúc:** DenseNet121 pretrained trên ImageNet. Thay thế layer `classifier` cuối:
+
+```
+Dropout(p=0.5) → Linear(1024 → 8)
+```
+
+**Augmentation & Huấn luyện:** Giống ResNet34 (xem mục 3.2) — không augment, không Mixup.
+
+**Dữ liệu:** RAVDESS + SAVEE (1920 mẫu), chia 80/10/10.
 
 ---
 
@@ -100,7 +96,7 @@ Tổng số tham số: **662,281**.
 | SAVEE | 480 | 4 diễn viên nam | 7 lớp (không có calm; neutral=120) |
 | **Tổng** | **1920** | — | **8 lớp** |
 
-> **[CẦN HÌNH: Biểu đồ phân phối cảm xúc (bar chart) của combined dataset — lấy từ cell "combine" trong cả 3 notebook]**
+Cả ba mô hình (SVM, ResNet34, DenseNet121) đều sử dụng cùng tập dữ liệu kết hợp RAVDESS + SAVEE (**1920 mẫu**).
 
 **Chia dữ liệu:** Stratified split, random_state=42.
 
@@ -112,23 +108,22 @@ Tổng số tham số: **662,281**.
 | Validation | 192 | 10% |
 | Test | 192 | 10% |
 
-So với DeepEmoNet sử dụng split 90/5/5 (1728/96/96), cách chia này giảm training data nhưng cho test set lớn hơn và đáng tin cậy hơn.
-
 ---
 
 ### 4.2 Chi tiết thực nghiệm
 
-| Thành phần | MFCC + SVM | BiLSTM v2 | ResNet34 |
+| Thành phần | MFCC + SVM | ResNet34 | DenseNet121 |
 |---|---|---|---|
-| **Đặc trưng** | MFCC mean+std (40-dim) | Log-mel (128×128) | Log-mel (128×128 × 3ch) |
-| **Chuẩn hóa** | StandardScaler | [−80,0]→[0,1] | [0,1] + ImageNet norm |
-| **Augmentation** | — | SpecAugment | Rotate/Zoom/Brightness + Mixup |
-| **Loss** | — | Weighted CrossEntropy | CrossEntropy (soft) |
-| **Optimizer** | GridSearch (SVM) | Adam + ReduceLROnPlateau | Adam + ExponentialLR |
-| **Epochs** | — | ≤200, stopped @99 | 30 |
+| **Dữ liệu** | RAVDESS + SAVEE (1920) | RAVDESS + SAVEE (1920) | RAVDESS + SAVEE (1920) |
+| **Đặc trưng** | MFCC mean+std (40-dim) | Log-mel (128×128 × 3ch) | Log-mel (128×128 × 3ch) |
+| **Chuẩn hóa** | StandardScaler | [0,1] + train-set mean/std | [0,1] + train-set mean/std |
+| **Augmentation** | — | — | — |
+| **Loss** | — | CrossEntropy (hard labels) | CrossEntropy (hard labels) |
+| **Optimizer** | GridSearch (SVM) | Adam + CosineAnnealingLR | Adam + CosineAnnealingLR |
+| **Epochs** | — | 30 | 30 |
 | **Batch size** | — | 64 | 64 |
-| **Pretrained** | ✗ | ✗ | ✓ ImageNet |
-| **Tham số** | ~few K (SVM) | 662,281 | 21.3M |
+| **Pretrained** | ✗ | ✓ ImageNet | ✓ ImageNet |
+| **Tham số** | ~few K (SVM) | ~21.3M | ~7.0M |
 
 ---
 
@@ -137,7 +132,7 @@ So với DeepEmoNet sử dụng split 90/5/5 (1728/96/96), cách chia này giả
 Sử dụng **accuracy** và **F1-score** để đánh giá hiệu suất mô hình. Tất cả kết quả được báo cáo trên **test set** — tập dữ liệu chưa được sử dụng trong bất kỳ quá trình huấn luyện hay chọn hyperparameter nào.
 
 - SVM: F1 **weighted** (phù hợp với class imbalance)
-- BiLSTM, ResNet34: F1 **macro** (trọng số bằng nhau cho mọi lớp)
+- ResNet34, DenseNet121: F1 **macro** (trọng số bằng nhau cho mọi lớp)
 
 ---
 
@@ -145,28 +140,12 @@ Sử dụng **accuracy** và **F1-score** để đánh giá hiệu suất mô h�
 
 #### Bảng tổng hợp
 
-| Mô hình | Accuracy (Test) | F1 (Test) | Ghi chú |
-|---|---|---|---|
-| MFCC + SVM (baseline) | 56.8% | 0.5636 | Trước GridSearch |
-| MFCC + SVM (tuned) | **66.67%** | **0.6669** (weighted) | C=10, gamma='scale' |
-| Log-Mel + BiLSTM v2 | **63.54%** | **0.6394** (macro) | Stopped @epoch 99 |
-| Log-Mel + ResNet34 | **75.00%** | **0.7503** (macro) | 30 epochs fine-tune |
-
-#### So sánh với DeepEmoNet
-
-| Mô hình | Accuracy | F1 | Tập đo | Nguồn |
+| Mô hình | Dữ liệu | Accuracy (Test) | F1 (Test) | Ghi chú |
 |---|---|---|---|---|
-| SVM (DeepEmoNet) | 51.7% | 0.509 | Validation | Vu, 2025 |
-| LSTM (DeepEmoNet) | 52.8% | 0.497 | Validation | Vu, 2025 |
-| CNN + TL (DeepEmoNet) | 57.3% | 0.528 | Validation | Vu, 2025 |
-| CNN + TL + Aug (DeepEmoNet) | 66.7% | 0.631 | Validation | Vu, 2025 |
-| **SVM (dự án này)** | **66.67%** | **0.6669** | **Test** | — |
-| **BiLSTM v2 (dự án này)** | **63.54%** | **0.6394** | **Test** | — |
-| **ResNet34 (dự án này)** | **75.00%** | **0.7503** | **Test** | — |
-
-> ⚠️ **Lưu ý so sánh:** DeepEmoNet báo cáo trên validation set; dự án này báo cáo trên test set. Validation accuracy thường cao hơn test accuracy do model được lựa chọn dựa trên val loss. Nếu tính cùng điều kiện, kết quả của dự án này có khả năng cao hơn thực tế được trình bày.
-
----
+| MFCC + SVM (baseline) | RAVDESS+SAVEE | 56.8% | 0.5636 | Trước GridSearch |
+| MFCC + SVM (tuned) | RAVDESS+SAVEE | **66.67%** | **0.6669** (weighted) | C=10, gamma='scale' |
+| Log-Mel + ResNet34 | RAVDESS+SAVEE | **76.04%** | **0.7588** (macro) | 30 epochs fine-tune, seed=42 |
+| Log-Mel + DenseNet121 | RAVDESS+SAVEE | **73.96%** | **0.7386** (macro) | 30 epochs fine-tune, seed=42 |
 
 #### Per-class Performance — MFCC + SVM (Test Set)
 
@@ -182,33 +161,37 @@ Sử dụng **accuracy** và **F1-score** để đánh giá hiệu suất mô h�
 | surprise | **0.86** | 0.73 | **0.79** | 26 |
 | **macro avg** | 0.67 | 0.67 | 0.67 | 192 |
 
-> **[CẦN HÌNH: Confusion matrix của SVM — từ cell "conf-matrix" trong notebook mfcc_SVM]**
-
----
-
-#### Per-class Performance — BiLSTM v2 (Test Set)
-
-> **[CẦN HÌNH / SỐ: Classification report của BiLSTM v2 — chạy lại notebook và thêm cell `classification_report`]**
-
-> **[CẦN HÌNH: Confusion matrix của BiLSTM v2]**
-
-> **[CẦN HÌNH: Training curves của BiLSTM v2 (Loss / Accuracy / LR) — từ cell "plots" trong notebook logmelspec_LSTM]**
-
 ---
 
 #### Per-class Performance — ResNet34 (Test Set)
 
-> **[CẦN HÌNH / SỐ: Classification report của ResNet34 — từ cell "class-report" trong notebook logmelspec_CNN_resnet34]**
-
-> **[CẦN HÌNH: Confusion matrix của ResNet34 — từ cell "conf-matrix"]**
-
-> **[CẦN HÌNH: Training curves của ResNet34 (Loss / Accuracy / LR) — đã có tại `result/training_curves_resnet34.png`]**
+| Cảm xúc | Precision | Recall | F1 | Support |
+|---|---|---|---|---|
+| neutral | 0.70 | 0.73 | 0.71 | 22 |
+| calm | 0.84 | 0.84 | 0.84 | 19 |
+| happy | 0.74 | 0.68 | 0.71 | 25 |
+| sad | 0.70 | 0.76 | 0.73 | 25 |
+| angry | **0.85** | **0.88** | **0.86** | 25 |
+| fear | 0.72 | 0.72 | 0.72 | 25 |
+| disgust | 0.70 | 0.56 | 0.62 | 25 |
+| surprise | 0.83 | **0.92** | **0.87** | 26 |
+| **macro avg** | 0.76 | 0.76 | 0.76 | 192 |
 
 ---
 
-#### Tổng hợp kết quả theo lớp cảm xúc
+#### Per-class Performance — DenseNet121 (Test Set)
 
-> **[CẦN HÌNH: Bar chart so sánh F1 per-class của 3 mô hình — vẽ bằng seaborn/matplotlib từ 3 classification report]**
+| Cảm xúc | Precision | Recall | F1 | Support |
+|---|---|---|---|---|
+| neutral | 0.67 | 0.73 | 0.70 | 22 |
+| calm | 0.75 | **0.95** | **0.84** | 19 |
+| happy | 0.76 | 0.64 | 0.70 | 25 |
+| sad | 0.68 | 0.68 | 0.68 | 25 |
+| angry | **0.81** | 0.84 | 0.82 | 25 |
+| fear | 0.70 | 0.64 | 0.67 | 25 |
+| disgust | 0.76 | 0.64 | 0.70 | 25 |
+| surprise | 0.79 | 0.85 | 0.81 | 26 |
+| **macro avg** | 0.74 | 0.75 | 0.74 | 192 |
 
 ---
 
@@ -226,40 +209,39 @@ Sử dụng **accuracy** và **F1-score** để đánh giá hiệu suất mô h�
 - Mất thông tin thời gian: lấy mean/std xóa bỏ temporal dynamics của giọng nói
 - Khó cải thiện thêm mà không đổi sang đặc trưng tốt hơn
 
-### 5.2 BiLSTM v2
+### 5.2 ResNet34 (Transfer Learning)
 
 **Điểm mạnh:**
-- Xử lý được chuỗi thời gian (temporal modeling)
-- Attention Pooling cải thiện đáng kể so với last-timestep (không overfitting như LSTM gốc của DeepEmoNet)
-- Chỉ 662K tham số, nhẹ nhàng, không cần pretrained
-
-**Điểm yếu:**
-- Test accuracy (63.54%) thấp hơn SVM → cần nhiều dữ liệu hơn để BiLSTM thể hiện ưu thế
-- Training lâu (99 epochs), không ổn định trong giai đoạn đầu
-
-### 5.3 ResNet34 (Transfer Learning)
-
-**Điểm mạnh:**
-- Kết quả tốt nhất: **75.0% accuracy**, **F1=0.7503**
 - Transfer learning từ ImageNet cho phép học được low-level visual patterns từ spectrogram
-- Mixup + image augmentation giảm overfitting hiệu quả (train 94.5% vs test 75.0%, gap hợp lý)
-- Val ≈ Test (77% vs 75%) → model generalizes tốt
+- Kiến trúc residual giúp huấn luyện ổn định
+- Vượt SVM về accuracy (76.04% vs 66.67%), cân bằng tốt giữa các lớp — tốt nhất ở *angry* (F1=0.86) và *surprise* (F1=0.87)
+- **Kết quả tốt nhất trong 3 model** (accuracy + F1 macro cao nhất trên test), dù ít tham số hơn không phải lý do — ngược lại, 21.3M tham số (nhiều hơn DenseNet121) nhưng vẫn overfit ít bị ảnh hưởng hơn ở seed này
 
 **Điểm yếu:**
-- 21.3M tham số, cần GPU
-- Overfitting nhẹ: train 94.5% >> test 75.0%
-- Log-mel spectrogram ≠ ảnh tự nhiên → ImageNet pretraining không hoàn toàn phù hợp về mặt lý thuyết, dù thực tế hoạt động tốt
+- Overfitting nghiêm trọng: train 100% vs test 76.04%
+- Yếu nhất ở *disgust* (F1=0.62, recall chỉ 0.56)
+- 21.3M tham số — nặng hơn đáng kể so với DenseNet121 (~7M) dù kết quả tốt hơn, không hiệu quả về mặt tham số
+
+### 5.3 DenseNet121 (Transfer Learning)
+
+**Điểm mạnh:**
+- Ít tham số hơn ResNet34 (~7M vs ~21.3M)
+- Dense connections giúp tái sử dụng đặc trưng
+- Tốt nhất ở *calm* (recall 0.95, F1=0.84)
+
+**Điểm yếu:**
+- Overfitting: train 100% >> test 73.96%
+- **Kết quả thấp hơn ResNet34** ở seed này (73.96% vs 76.04% accuracy, 0.7386 vs 0.7588 F1 macro) — đảo ngược so với lần chạy chưa cố định seed trước đó
+- Log-mel spectrogram ≠ ảnh tự nhiên → ImageNet pretraining không hoàn toàn phù hợp về mặt lý thuyết
+- Yếu ở *happy*, *fear*, *disgust* (F1 quanh 0.67-0.70)
 
 ### 5.4 Hạn chế nghiên cứu
 
 Các kết quả trên cần được diễn giải thận trọng vì những hạn chế sau:
 
-- **Speaker leakage (nghiêm trọng nhất):** dữ liệu chia ngẫu nhiên theo file, cùng diễn viên nằm ở cả train và test. Vì vậy **accuracy 75%** nhiều khả năng bị thổi phồng; đánh giá SER đúng chuẩn phải dùng **speaker-independent split** (leave-speakers-out).
-- **So sánh DeepEmoNet khập khiễng:** DeepEmoNet đo trên *validation* với split 90/5/5, dự án này đo trên *test* với split 80/10/10. Câu "vượt DeepEmoNet" **không vững về mặt khoa học**, chỉ mang tính tham khảo.
-- **Test set nhỏ (192 mẫu):** chênh lệch 63.54% (BiLSTM) vs 75.00% (ResNet34) nằm trong biên sai số lớn. Chưa có khoảng tin cậy (CI), độ lệch chuẩn qua nhiều seed, hay k-fold.
-- **Tái lập chưa đầy đủ:** đã cố định `random_state` cho split, nhưng **chưa set seed cho torch/numpy/cuda** → kết quả deep learning khó tái lập chính xác.
-- **README chưa hoàn chỉnh:** còn nhiều `[CẦN HÌNH]`, thiếu confusion matrix và classification report đầy đủ cho BiLSTM và ResNet34.
-- **Phiên bản notebook:** có 3 version notebook CNN (v1/v2/v3); số liệu cuối lấy từ **v3**, còn lại chỉ là bản thử nghiệm.
+- **Speaker leakage (nghiêm trọng nhất):** dữ liệu chia ngẫu nhiên theo file, cùng diễn viên nằm ở cả train và test. Vì vậy accuracy nhiều khả năng bị thổi phồng; đánh giá SER đúng chuẩn phải dùng **speaker-independent split** (leave-speakers-out).
+- **Test set nhỏ (192 mẫu) + chỉ chạy 1 seed:** đã cố định `SEED=42` cho `random/numpy/torch/cuda`, nhưng **kết quả rất nhạy với seed** — lần chạy trước (chưa cố định seed) DenseNet121 thắng ResNet34 (77.08% vs 75.00%), lần chạy này (seed cố định) thì ngược lại (73.96% vs 76.04%). Kết luận "model nào tốt hơn" không đáng tin nếu chỉ dựa trên 1 lần chạy — cần chạy nhiều seed và báo cáo mean ± std hoặc k-fold.
+- **Phiên bản notebook:** dự án hiện chỉ dùng **`logmelspec_CNN_v2`** cho các mô hình CNN (v1/v3 chỉ là bản thử nghiệm trung gian, không dùng cho số liệu báo cáo).
 
 ---
 
@@ -268,12 +250,15 @@ Các kết quả trên cần được diễn giải thận trọng vì những h
 Ba mô hình được phát triển cho bài toán SER trên RAVDESS+SAVEE:
 
 1. **MFCC + SVM**: baseline đơn giản nhưng hiệu quả (66.67% test), phù hợp khi không có GPU
-2. **BiLSTM v2**: mô hình sequence learning với attention, kết quả trung bình (63.54% test) nhưng kiến trúc có khả năng mở rộng tốt
-3. **ResNet34 + Transfer Learning**: mô hình tốt nhất (75.00% test); tuy nhiên con số này chưa so sánh công bằng với DeepEmoNet và bị ảnh hưởng bởi speaker leakage (xem mục 5.4)
+2. **ResNet34 + Transfer Learning**: mô hình tốt nhất trong lần chạy có seed cố định (76.04% test), vượt SVM và DenseNet121, nhưng vẫn overfitting nghiêm trọng và nặng tham số nhất (~21.3M)
+3. **DenseNet121 + Transfer Learning**: kết quả thấp hơn ResNet34 ở seed này (73.96% test), dù ít tham số hơn (~7M)
+
+> Lưu ý: thứ hạng ResNet34 vs DenseNet121 đã đảo ngược giữa 2 lần chạy (có/không cố định seed) — xem mục 5.4. Kết luận "model nào tốt hơn" ở đây chỉ đúng cho seed=42, chưa đủ cơ sở để khái quát.
 
 Bước tiếp theo để cải thiện:
+- Chạy nhiều seed (≥5) và báo cáo mean ± std để so sánh model công bằng, đáng tin hơn
 - Fine-tune pretrained speech model (wav2vec 2.0, HuBERT) thay vì vision model
-- Kết hợp CNN và LSTM (CNN để trích xuất đặc trưng, LSTM để mô hình chuỗi)
+- Sử dụng speaker-independent split để đánh giá chính xác hơn
 - Thêm delta/delta-delta MFCC cho pipeline SVM
 - Tăng kích thước dataset (data augmentation âm thanh: pitch shift, time stretch, noise injection)
 
@@ -284,8 +269,6 @@ Bước tiếp theo để cải thiện:
 - Vu, T. (2025). *DeepEmoNet: Building Machine Learning Models for Automatic Emotion Recognition in Human Speeches*. arXiv:2509.00025.
 - Livingstone, S. R., & Russo, F. A. (2018). The Ryerson Audio-Visual Database of Emotional Speech and Song (RAVDESS).
 - Jackson, P., & Haq, S. (2014). Surrey Audio-Visual Expressed Emotion (SAVEE) Database.
-- Park, D. S., et al. (2019). SpecAugment: A Simple Data Augmentation Method for Automatic Speech Recognition. *Interspeech 2019*.
-- Zhang, H., et al. (2018). mixup: Beyond Empirical Risk Minimization.
+- Huang, G., et al. (2017). Densely Connected Convolutional Networks. *CVPR 2017*.
 - He, K., et al. (2016). Deep Residual Learning for Image Recognition. *CVPR 2016*.
 - McFee, B., et al. (2015). librosa: Audio and music signal analysis in Python. *SciPy 2015*.
-- Hochreiter, S., & Schmidhuber, J. (1997). Long Short-Term Memory. *Neural Computation*.
