@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Todo App</title>
+</head>
+<body>
+    <h1>Todo List</h1>
+
+    <input type="text" id="itemInput">
+    <button onclick="addItem()">Add</button>
+
+    <ul id="list">
+        {% for item in items %}
+        <li>{{ item }}</li>
+        {% endfor %}
+    </ul>
+
+    <script>
+        async function addItem() {
+            const item = document.getElementById("itemInput").value;
+
+            await fetch("/add", {
+                method: "POST",
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+                body: `item=${item}`
+            });
+
+            location.reload();
+        }
+    </script>
+</body>
+</html>
