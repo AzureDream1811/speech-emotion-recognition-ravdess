@@ -1,9 +1,10 @@
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-app = FastAPI()
+app = FastAPI(redirect_slashes=False)
 
 items = []
 
@@ -12,17 +13,20 @@ templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
+class ItemRequest(BaseModel):
+    item: str
+
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
+def home(request: Request):
     return templates.TemplateResponse(
         request=request, name="index.html", context={"items": items}
     )
 
 
-@app.post("/add/")
-def create_item(item: str):
-    items.append(item)
-    return {"item": item}
+@app.post("/add")
+def create_item(req: ItemRequest):
+    items.append(req.item)
+    return req
 
 
 @app.post("/add/batch/")
