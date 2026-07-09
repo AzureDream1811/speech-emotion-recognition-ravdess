@@ -2,18 +2,39 @@
 <html>
 <head>
     <title>Emotion Recognition</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
 </head>
 <body>
-    <h1>Todo List</h1>
+    <h1>Speech Emotion Recognition</h1>
 
-    <input type="text" id="itemInput">
-    <button onclick="addItem()">Add</button>
+    <div class="card">
+        <p class="subtitle">Upload a .wav file</p>
 
-    <ul id="list">
-        {% for item in items %}
-        <li>{{ item }}</li>
-        {% endfor %}
-    </ul>
+        <input type="file" id="fileInput" accept=".wav">
+
+        <p id="result"></p>
+
+        <table class="emotion-table">
+            <thead>
+                <tr>
+                    <th>Label</th>
+                    <th>Emotion</th>
+                    <th>RAVDESS</th>
+                    <th>SAVEE</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>0</td><td>neutral</td><td>01</td><td>n</td></tr>
+                <tr><td>1</td><td>calm</td><td>02</td><td>—</td></tr>
+                <tr><td>2</td><td>happy</td><td>03</td><td>h</td></tr>
+                <tr><td>3</td><td>sad</td><td>04</td><td>sa</td></tr>
+                <tr><td>4</td><td>angry</td><td>05</td><td>a</td></tr>
+                <tr><td>5</td><td>fear</td><td>06</td><td>f</td></tr>
+                <tr><td>6</td><td>disgust</td><td>07</td><td>d</td></tr>
+                <tr><td>7</td><td>surprise</td><td>08</td><td>su</td></tr>
+            </tbody>
+        </table>
+    </div>
 
     <script src="{{ url_for('static', path='index.js') }}"></script>
 </body>

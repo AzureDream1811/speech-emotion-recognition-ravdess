@@ -1,8 +1,13 @@
-from fastapi import FastAPI, Request
+import os
+import shutil
+import tempfile
+
+from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+
+from inference import predict_emotion
 
 app = FastAPI(redirect_slashes=False)
 
@@ -13,9 +18,6 @@ templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-class ItemRequest(BaseModel):
-    item: str
-
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse(
@@ -23,25 +25,16 @@ def home(request: Request):
     )
 
 
-@app.post("/add")
-def create_item(req: ItemRequest):
-    items.append(req.item)
-    return req
+@app.post("/predict")
+async def predict(file: UploadFile = File(...)):
+    suffix = os.path.splitext(file.filename)[1] or ".wav"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = tmp.name
 
+    try:
+        emotion = predict_emotion(tmp_path)
+    finally:
+        os.remove(tmp_path)
 
-@app.post("/add/batch/")
-def create_items_batch(new_items: list):
-    items.extend(new_items)
-    return {"items": new_items}
-
-
-@app.get("/items/")
-def read_items():
-    return {"items": items}
-
-
-@app.get("/items/{item_id}")
-def read_item(item_id: int):
-    if item_id < 0 or item_id >= len(items):
-        return {"error": "Item not found"}
-    return {"item": items[item_id]}
+    return {"emotion": emotion}

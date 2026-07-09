@@ -1,0 +1,118 @@
+:root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --border: #262b35;
+    --text: #e7e9ee;
+    --muted: #8b93a3;
+    --accent: #4fd1c5;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.card {
+    width: 360px;
+    padding: 32px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+
+h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.subtitle {
+    margin: 0 0 24px;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+#fileInput {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+#fileInput::file-selector-button {
+    padding: 6px 12px;
+    margin-right: 10px;
+    border: none;
+    border-radius: 6px;
+    background: var(--border);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#fileInput::file-selector-button:hover {
+    background: #323847;
+}
+
+#result {
+    margin: 24px 0 0;
+    padding: 12px 14px;
+    min-height: 20px;
+    border-radius: 8px;
+    background: #0b0d11;
+    border: 1px solid var(--border);
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 13px;
+    color: var(--accent);
+}
+
+#result:empty {
+    display: none;
+}
+
+.emotion-table {
+    width: 100%;
+    margin-top: 24px;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.emotion-table th,
+.emotion-table td {
+    padding: 6px 8px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.emotion-table th {
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+}
+
+.emotion-table td {
+    color: var(--text);
+}
+
+.emotion-table tr:last-child td {
+    border-bottom: none;
+}
